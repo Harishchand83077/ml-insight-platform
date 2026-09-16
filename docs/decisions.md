@@ -1,0 +1,1 @@
+# here we will note down every non obvious decisions 
