@@ -1,45 +1,56 @@
 """
 Generates synthetic customer behavioral events for the Telco churn dataset
 (data/raw/telco_churn.csv.csv), correlated with each customer's real Churn
-label, Contract type, and service columns so downstream models see realistic
-signal. Output is written to data/synthetic/ as three CSVs and NOT published
-to RabbitMQ (that comes after the data is validated).
+label, Contract type, and service columns so downstream models see
+realistic, IMPERFECT signal rather than a clean split. Output is written to
+data/synthetic/ as three CSVs and NOT published to RabbitMQ (that comes
+after the data is validated).
 
 Correlation logic per event type:
 
 1. login_events (10-30 events per customer, spread over the last 90 days)
-   - Every customer gets a baseline daily login probability for the older
-     half of the window (days 31-90 ago).
-   - Churned customers ("Churn" == "Yes") get that probability multiplied
-     down sharply for the most recent 30 days, and their session_duration
-     for those recent events is scaled down too - modeling a customer who
-     is disengaging right before they leave. The result is a declining
-     login-frequency AND declining session-length trend near day 0.
-   - Non-churned customers keep a flat-to-slightly-increasing probability
-     and session length in the recent 30 days, modeling steady or growing
-     engagement.
+   - Each customer is randomly assigned a 30-day engagement trend -
+     "declining", "flat", or "increasing" - drawn from a churn-conditional
+     distribution: churned customers draw from [0.45, 0.35, 0.20]
+     (declining/flat/increasing), non-churned from [0.30, 0.40, 0.30]. So
+     most churned customers still trend down, but a meaningful minority
+     (55%) are flat or even increasing, and 30% of non-churned customers
+     trend down too - real overlap, not a clean split.
+   - The trend sets both the recent-30-day login-probability curve and the
+     recent-session-duration scaling, each with its own per-customer random
+     draw within the trend's range (e.g. a "declining" customer's session
+     durations shrink to somewhere between 35% and 65% of normal, not a
+     fixed amount), so no two customers in the same trend look identical.
 
 2. support_tickets (0-5 tickets per customer, over the last 90 days)
    - Ticket count is drawn from a Poisson distribution whose mean is higher
      for customers with TechSupport == "No" (they have no support add-on,
      so more issues end up as tickets instead of being self-served),
      clipped to [0, 5].
-   - resolved is a Bernoulli draw whose success probability is lower for
-     churned customers, modeling unresolved issues as a churn driver.
-   - resolution_time_hours (only set when resolved) is drawn from a
-     log-normal distribution with a higher mean for churned customers,
-     modeling slower support as another churn driver. Unresolved tickets
-     have no resolution time (NaN).
+   - Each customer gets their own resolve probability, drawn from a normal
+     distribution centered lower for churned customers (0.60) than
+     non-churned (0.82) but with enough spread (sigma 0.16) that plenty of
+     churned customers land in the high-resolve range and vice versa -
+     some churned customers had a fine support experience, some
+     non-churned customers had a bad one.
+   - Each customer also gets their own mean resolution time (log-normal,
+     centered higher for churned customers), and each individual ticket's
+     resolution_time_hours is then drawn around that per-customer mean -
+     two layers of noise instead of one fixed value per group. Unresolved
+     tickets have no resolution time (NaN).
 
 3. feature_usage_logs (per active add-on service per customer)
    - For each of OnlineSecurity, OnlineBackup, DeviceProtection,
      TechSupport, StreamingTV, StreamingMovies where the customer's value
      is "Yes", a handful of usage events are generated over the last 90
      days.
-   - Churned customers get fewer events per service (sparser usage) and a
-     lower per-event usage_count (drawn from a Poisson with a smaller
-     mean) than non-churned customers, modeling declining/low engagement
-     with the services they are paying for right before they leave.
+   - Each customer gets their own usage_count rate, drawn from a
+     log-normal distribution centered lower for churned customers (3.0)
+     than non-churned (5.0) with sigma 0.6 - wide enough that the two
+     groups' usage_count distributions overlap substantially rather than
+     occupying clearly separated ranges. Event-count ranges per service
+     also overlap (3-10 for churned, 4-14 for non-churned) rather than
+     being disjoint.
 
 All randomness goes through a single numpy Generator seeded with SEED, so
 re-running this script produces byte-identical CSVs.
@@ -76,6 +87,10 @@ ADDON_SERVICES = [
     "StreamingMovies",
 ]
 
+TREND_CATEGORIES = ["declining", "flat", "increasing"]
+CHURNED_TREND_PROBS = [0.45, 0.35, 0.20]
+NON_CHURNED_TREND_PROBS = [0.30, 0.40, 0.30]
+
 
 def random_timestamps(rng, day_weights, n):
     """Pick n days-ago values from day_weights (index = days ago, 0..WINDOW_DAYS-1),
@@ -88,6 +103,24 @@ def random_timestamps(rng, day_weights, n):
     ]
 
 
+def trend_end_scale(rng, trend):
+    """Recent-30d login-probability multiplier at day 0 (ramps from 1.0 at day 29)."""
+    if trend == "declining":
+        return rng.uniform(0.35, 0.65)
+    if trend == "flat":
+        return rng.uniform(0.85, 1.15)
+    return rng.uniform(1.15, 1.45)  # increasing
+
+
+def trend_duration_low(rng, trend):
+    """Recent-30d session-duration multiplier at day 0 (ramps from 1.0 at day 29)."""
+    if trend == "declining":
+        return rng.uniform(0.35, 0.65)
+    if trend == "flat":
+        return rng.uniform(0.85, 1.05)
+    return rng.uniform(1.05, 1.3)  # increasing
+
+
 def generate_login_events(rng, customers):
     rows = []
     days_ago = np.arange(WINDOW_DAYS)  # 0 = today, WINDOW_DAYS-1 = oldest
@@ -96,24 +129,20 @@ def generate_login_events(rng, customers):
     for cust in customers:
         n_events = rng.integers(10, 31)
         churned = cust["Churn"] == "Yes"
+        trend_probs = CHURNED_TREND_PROBS if churned else NON_CHURNED_TREND_PROBS
+        trend = rng.choice(TREND_CATEGORIES, p=trend_probs)
 
         weights = np.ones(WINDOW_DAYS)
-        if churned:
-            # sharp drop-off in login probability as we approach day 0
-            recent_scale = np.linspace(1.0, 0.15, RECENT_DAYS)
-            weights[is_recent] = recent_scale
-        else:
-            # flat-to-slightly-increasing probability near day 0
-            recent_scale = np.linspace(1.0, 1.4, RECENT_DAYS)
-            weights[is_recent] = recent_scale
+        weights[is_recent] = np.linspace(1.0, trend_end_scale(rng, trend), RECENT_DAYS)
 
         timestamps = random_timestamps(rng, weights, n_events)
         base_duration = rng.lognormal(mean=6.2, sigma=0.5, size=n_events)  # ~ hundreds of secs
+        duration_low = trend_duration_low(rng, trend)
 
         for ts, dur in zip(timestamps, base_duration):
             days_before = (END_DATE - ts).days
-            if churned and days_before < RECENT_DAYS:
-                dur *= 0.3 + 0.6 * (days_before / RECENT_DAYS)  # shorter the more recent
+            if days_before < RECENT_DAYS:
+                dur *= duration_low + (1 - duration_low) * (days_before / RECENT_DAYS)
 
             rows.append(
                 {
@@ -142,14 +171,17 @@ def generate_support_tickets(rng, customers):
             continue
 
         timestamps = random_timestamps(rng, uniform_weights, n_tickets)
-        resolve_prob = 0.55 if churned else 0.88
+
+        resolve_prob = float(np.clip(rng.normal(0.60 if churned else 0.82, 0.16), 0.05, 0.98))
         resolved_flags = rng.random(n_tickets) < resolve_prob
-        resolution_mean = 24.0 if churned else 6.0
+
+        # per-customer mean resolution time, then per-ticket noise around it
+        resolution_mean = float(rng.lognormal(mean=np.log(18.0 if churned else 8.0), sigma=0.7))
         categories = rng.choice(TICKET_CATEGORIES, size=n_tickets)
 
         for ts, resolved, category in zip(timestamps, resolved_flags, categories):
             resolution_time = (
-                round(float(rng.lognormal(mean=np.log(resolution_mean), sigma=0.6)), 2)
+                round(float(rng.lognormal(mean=np.log(resolution_mean), sigma=0.5)), 2)
                 if resolved
                 else np.nan
             )
@@ -172,8 +204,9 @@ def generate_feature_usage_logs(rng, customers):
 
     for cust in customers:
         churned = cust["Churn"] == "Yes"
-        n_events_range = (2, 8) if churned else (5, 15)
-        usage_lambda = 2.0 if churned else 6.0
+        n_events_range = (3, 10) if churned else (4, 14)
+        # per-customer usage rate, wide enough to overlap the other group's range
+        usage_lambda = float(rng.lognormal(mean=np.log(3.0 if churned else 5.0), sigma=0.6))
 
         for service in ADDON_SERVICES:
             if cust[service] != "Yes":

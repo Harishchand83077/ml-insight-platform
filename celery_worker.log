@@ -1,0 +1,167 @@
+ 
+ -------------- celery@LAPTOP-H59OT390 v5.6.3 (recovery)
+--- ***** ----- 
+-- ******* ---- Windows-10-10.0.26200-SP0 2026-09-22 00:45:59
+- *** --- * --- 
+- ** ---------- [config]
+- ** ---------- .> app:         retrain_task:0x1c84bd3b850
+- ** ---------- .> transport:   redis://localhost:6379/0
+- ** ---------- .> results:     redis://localhost:6379/0
+- *** --- * --- .> concurrency: 8 (solo)
+-- ******* ---- .> task events: OFF (enable -E to monitor tasks in this worker)
+--- ***** ----- 
+ -------------- [queues]
+                .> celery           exchange=celery(direct) key=celery
+                
+
+[tasks]
+  . retrain_model
+
+[2026-09-22 00:45:59,773: INFO/MainProcess] Connected to redis://localhost:6379/0
+[2026-09-22 00:45:59,818: INFO/MainProcess] mingle: searching for neighbors
+[2026-09-22 00:46:00,908: INFO/MainProcess] mingle: all alone
+[2026-09-22 00:46:01,029: INFO/MainProcess] celery@LAPTOP-H59OT390 ready.
+[2026-09-22 00:46:50,438: INFO/MainProcess] Task retrain_model[c3963e2b-af9f-49c0-8fcb-1034c0e97582] received
+[2026-09-22 00:47:04,330: WARNING/MainProcess] 2026/09/22 00:47:04 INFO mlflow.agent.hint: Load the `instrumenting-with-mlflow-tracing` skill at C:\Users\Mi\OneDrive\Desktop\ml-insight-platform\venv\Lib\site-packages\mlflow\assistant\skills\instrumenting-with-mlflow-tracing\SKILL.md before writing any tracing code; it ships with this MLflow install. Set MLFLOW_DISABLE_AGENT_HINT=1 to silence this.
+[2026-09-22 00:47:20,288: WARNING/MainProcess] C:\Users\Mi\OneDrive\Desktop\ml-insight-platform\src\models\train_baseline.py:77: UserWarning: pandas only supports SQLAlchemy connectable (engine/connection) or database string URI or sqlite3 DBAPI2 connection. Other DBAPI2 objects are not tested. Please consider using SQLAlchemy.
+  df = pd.read_sql(
+
+[2026-09-22 00:47:22,921: WARNING/MainProcess] 2026/09/22 00:47:22 WARNING mlflow.models.model: `artifact_path` is deprecated. Please use `name` instead.
+[2026-09-22 00:48:56,208: WARNING/MainProcess] 2026/09/22 00:48:56 WARNING mlflow.models.model: `artifact_path` is deprecated. Please use `name` instead.
+[2026-09-22 00:49:26,226: WARNING/MainProcess] 
+Train rows: 5634  Test rows: 1409  Churn rate (test): 0.265
+[2026-09-22 00:49:26,226: WARNING/MainProcess] metric         logistic_regression       xgboost
+[2026-09-22 00:49:26,226: WARNING/MainProcess] accuracy                    0.8339        0.8495
+[2026-09-22 00:49:26,226: WARNING/MainProcess] precision                   0.7215        0.7531
+[2026-09-22 00:49:26,269: WARNING/MainProcess] recall                      0.6096        0.6444
+[2026-09-22 00:49:26,269: WARNING/MainProcess] f1                          0.6609        0.6945
+[2026-09-22 00:49:26,269: WARNING/MainProcess] roc_auc                     0.9002        0.9054
+[2026-09-22 00:49:26,269: WARNING/MainProcess] pr_auc                      0.7741        0.7819
+[2026-09-22 00:49:26,587: INFO/MainProcess] Task retrain_model[c3963e2b-af9f-49c0-8fcb-1034c0e97582] succeeded in 156.14000000001397s: 'retrain_model finished'
+[2026-09-22 01:01:50,937: WARNING/MainProcess] consumer: Connection to broker lost. Trying to re-establish the connection...
+Traceback (most recent call last):
+  File "C:\Users\Mi\OneDrive\Desktop\ml-insight-platform\venv\Lib\site-packages\redis\retry.py", line 120, in call_with_retry
+    return do()
+           ^^^^
+  File "C:\Users\Mi\OneDrive\Desktop\ml-insight-platform\venv\Lib\site-packages\redis\client.py", line 1308, in <lambda>
+    lambda: command(*args, **kwargs),
+            ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Mi\OneDrive\Desktop\ml-insight-platform\venv\Lib\site-packages\redis\client.py", line 1395, in try_read
+    return conn.read_response(
+           ^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Mi\OneDrive\Desktop\ml-insight-platform\venv\Lib\site-packages\redis\connection.py", line 1407, in read_response
+    response = self._parser.read_response(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Mi\OneDrive\Desktop\ml-insight-platform\venv\Lib\site-packages\redis\_parsers\resp3.py", line 40, in read_response
+    result = self._read_response(
+             ^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Mi\OneDrive\Desktop\ml-insight-platform\venv\Lib\site-packages\redis\_parsers\resp3.py", line 65, in _read_response
+    raw = self._buffer.readline(timeout=timeout)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Mi\OneDrive\Desktop\ml-insight-platform\venv\Lib\site-packages\redis\_parsers\socket.py", line 117, in readline
+    self._read_from_socket(timeout=timeout)
+  File "C:\Users\Mi\OneDrive\Desktop\ml-insight-platform\venv\Lib\site-packages\redis\_parsers\socket.py", line 67, in _read_from_socket
+    raise ConnectionError(SERVER_CLOSED_CONNECTION_ERROR)
+redis.exceptions.ConnectionError: Connection closed by server.
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\Mi\OneDrive\Desktop\ml-insight-platform\venv\Lib\site-packages\celery\worker\consumer\consumer.py", line 346, in start
+    blueprint.start(self)
+  File "C:\Users\Mi\OneDrive\Desktop\ml-insight-platform\venv\Lib\site-packages\celery\bootsteps.py", line 116, in start
+    step.start(parent)
+  File "C:\Users\Mi\OneDrive\Desktop\ml-insight-platform\venv\Lib\site-packages\celery\worker\consumer\consumer.py", line 788, in start
+    c.loop(*c.loop_args())
+  File "C:\Users\Mi\OneDrive\Desktop\ml-insight-platform\venv\Lib\site-packages\celery\worker\loops.py", line 168, in synloop
+    _loop_cycle()
+  File "C:\Users\Mi\OneDrive\Desktop\ml-insight-platform\venv\Lib\site-packages\celery\worker\loops.py", line 157, in _loop_cycle
+    connection.drain_events(timeout=2.0)
+  File "C:\Users\Mi\OneDrive\Desktop\ml-insight-platform\venv\Lib\site-packages\kombu\connection.py", line 343, in drain_events
+    return self.transport.drain_events(self.connection, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Mi\OneDrive\Desktop\ml-insight-platform\venv\Lib\site-packages\kombu\transport\virtual\base.py", line 997, in drain_events
+    get(self._deliver, timeout=timeout)
+  File "C:\Users\Mi\OneDrive\Desktop\ml-insight-platform\venv\Lib\site-packages\kombu\transport\redis.py", line 601, in get
+    ret = self.handle_event(fileno, event)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Mi\OneDrive\Desktop\ml-insight-platform\venv\Lib\site-packages\kombu\transport\redis.py", line 583, in handle_event
+    return self.on_readable(fileno), self
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Mi\OneDrive\Desktop\ml-insight-platform\venv\Lib\site-packages\kombu\transport\redis.py", line 579, in on_readable
+    chan.handlers[type]()
+  File "C:\Users\Mi\OneDrive\Desktop\ml-insight-platform\venv\Lib\site-packages\kombu\transport\redis.py", line 931, in _receive
+    ret.append(self._receive_one(c))
+               ^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Mi\OneDrive\Desktop\ml-insight-platform\venv\Lib\site-packages\kombu\transport\redis.py", line 941, in _receive_one
+    response = c.parse_response()
+               ^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Mi\OneDrive\Desktop\ml-insight-platform\venv\Lib\site-packages\redis\client.py", line 1399, in parse_response
+    response = self._execute(conn, try_read)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Mi\OneDrive\Desktop\ml-insight-platform\venv\Lib\site-packages\redis\client.py", line 1307, in _execute
+    response = conn.retry.call_with_retry(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Mi\OneDrive\Desktop\ml-insight-platform\venv\Lib\site-packages\redis\retry.py", line 127, in call_with_retry
+    fail(error, failures)
+  File "C:\Users\Mi\OneDrive\Desktop\ml-insight-platform\venv\Lib\site-packages\redis\client.py", line 1304, in failure_callback
+    self._reconnect(conn, error, failure_count, start_time, command_name)
+  File "C:\Users\Mi\OneDrive\Desktop\ml-insight-platform\venv\Lib\site-packages\redis\client.py", line 1278, in _reconnect
+    conn.connect()
+  File "C:\Users\Mi\OneDrive\Desktop\ml-insight-platform\venv\Lib\site-packages\redis\connection.py", line 1028, in connect
+    self.retry.call_with_retry(
+  File "C:\Users\Mi\OneDrive\Desktop\ml-insight-platform\venv\Lib\site-packages\redis\retry.py", line 132, in call_with_retry
+    raise error
+  File "C:\Users\Mi\OneDrive\Desktop\ml-insight-platform\venv\Lib\site-packages\redis\retry.py", line 120, in call_with_retry
+    return do()
+           ^^^^
+  File "C:\Users\Mi\OneDrive\Desktop\ml-insight-platform\venv\Lib\site-packages\redis\connection.py", line 1029, in <lambda>
+    lambda: self.connect_check_health(
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Mi\OneDrive\Desktop\ml-insight-platform\venv\Lib\site-packages\redis\connection.py", line 1083, in connect_check_health
+    self.on_connect_check_health(check_health=check_health)
+  File "C:\Users\Mi\OneDrive\Desktop\ml-insight-platform\venv\Lib\site-packages\redis\connection.py", line 1186, in on_connect_check_health
+    self.handshake_metadata = self.read_response()
+                              ^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Mi\OneDrive\Desktop\ml-insight-platform\venv\Lib\site-packages\redis\connection.py", line 1407, in read_response
+    response = self._parser.read_response(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Mi\OneDrive\Desktop\ml-insight-platform\venv\Lib\site-packages\redis\_parsers\resp3.py", line 40, in read_response
+    result = self._read_response(
+             ^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Mi\OneDrive\Desktop\ml-insight-platform\venv\Lib\site-packages\redis\_parsers\resp3.py", line 65, in _read_response
+    raw = self._buffer.readline(timeout=timeout)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Mi\OneDrive\Desktop\ml-insight-platform\venv\Lib\site-packages\redis\_parsers\socket.py", line 117, in readline
+    self._read_from_socket(timeout=timeout)
+  File "C:\Users\Mi\OneDrive\Desktop\ml-insight-platform\venv\Lib\site-packages\redis\_parsers\socket.py", line 67, in _read_from_socket
+    raise ConnectionError(SERVER_CLOSED_CONNECTION_ERROR)
+redis.exceptions.ConnectionError: Connection closed by server.
+[2026-09-22 01:01:55,977: WARNING/MainProcess] C:\Users\Mi\OneDrive\Desktop\ml-insight-platform\venv\Lib\site-packages\celery\worker\consumer\consumer.py:397: CPendingDeprecationWarning: 
+In Celery 5.1 we introduced an optional breaking change which
+on connection loss cancels all currently executed tasks with late acknowledgement enabled.
+These tasks cannot be acknowledged as the connection is gone, and the tasks are automatically redelivered
+back to the queue. You can enable this behavior using the worker_cancel_long_running_tasks_on_connection_loss
+setting. In Celery 5.1 it is set to False by default. The setting will be set to True by default in Celery 6.0.
+
+  warnings.warn(CANCEL_TASKS_BY_DEFAULT, CPendingDeprecationWarning)
+
+[2026-09-22 21:12:16,087: INFO/MainProcess] Connected to redis://localhost:6379/0
+[2026-09-22 21:12:16,446: INFO/MainProcess] mingle: searching for neighbors
+[2026-09-22 21:12:17,653: INFO/MainProcess] mingle: all alone
+[2026-09-22 21:12:17,860: INFO/MainProcess] Task retrain_model[2821a8af-6681-4186-bf89-99ead82c0292] received
+[2026-09-22 21:12:18,999: WARNING/MainProcess] C:\Users\Mi\OneDrive\Desktop\ml-insight-platform\src\models\train_baseline.py:77: UserWarning: pandas only supports SQLAlchemy connectable (engine/connection) or database string URI or sqlite3 DBAPI2 connection. Other DBAPI2 objects are not tested. Please consider using SQLAlchemy.
+  df = pd.read_sql(
+
+[2026-09-22 21:12:24,924: WARNING/MainProcess] 2026/09/22 21:12:24 WARNING mlflow.models.model: `artifact_path` is deprecated. Please use `name` instead.
+[2026-09-22 21:14:45,881: WARNING/MainProcess] 2026/09/22 21:14:45 WARNING mlflow.models.model: `artifact_path` is deprecated. Please use `name` instead.
+[2026-09-22 21:15:39,871: WARNING/MainProcess] 
+Train rows: 5634  Test rows: 1409  Churn rate (test): 0.265
+[2026-09-22 21:15:39,871: WARNING/MainProcess] metric         logistic_regression       xgboost
+[2026-09-22 21:15:39,875: WARNING/MainProcess] accuracy                    0.8339        0.8495
+[2026-09-22 21:15:39,875: WARNING/MainProcess] precision                   0.7215        0.7531
+[2026-09-22 21:15:39,875: WARNING/MainProcess] recall                      0.6096        0.6444
+[2026-09-22 21:15:39,875: WARNING/MainProcess] f1                          0.6609        0.6945
+[2026-09-22 21:15:39,875: WARNING/MainProcess] roc_auc                     0.9002        0.9054
+[2026-09-22 21:15:39,875: WARNING/MainProcess] pr_auc                      0.7741        0.7819
+[2026-09-22 21:15:40,182: INFO/MainProcess] Task retrain_model[2821a8af-6681-4186-bf89-99ead82c0292] succeeded in 202.28100000001723s: 'retrain_model finished'

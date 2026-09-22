@@ -87,3 +87,89 @@
   three tables, no duplicates or loss.
 - Kept SQLite version as a reference checkpoint rather than deleting it.
 
+
+## Feature engineering (Week 2)
+
+- Built customer_features table (7043 rows, 17 columns) joining static 
+  customer data with 3 event tables via left joins (all customers kept, 
+  zero-events filled as 0, not dropped/imputed as mean).
+- num_addons_active engineered from 6 raw addon columns; raw addon 
+  columns and total_charges dropped (redundant/collinear, per EDA).
+- Unresolved tickets have NULL resolution_time_hours by design — mean 
+  naturally excludes them rather than treating as 0, which would 
+  understate resolution time.
+
+
+  ## Data leakage caught and fixed (Week 2)
+
+- Initial baseline models scored unrealistically high (F1 ~0.96-0.99, 
+  PR-AUC ~0.99). Root cause: synthetic event generator made churned 
+  customers near-deterministically have declining logins/low usage/
+  unresolved tickets, so features nearly encoded the label directly.
+- Fixed by widening the distributions so churned/non-churned behavior 
+  overlaps significantly while preserving correct directional 
+  correlation. Re-trained; metrics now in a realistic range.
+
+
+
+  ## Leakage fix validated (Week 2)
+
+- Reworked synthetic generator to use per-customer randomized trends/noise 
+  (churn-conditional probabilities with wide overlap) instead of 
+  deterministic group-level rules.
+- Re-trained on rebuilt features: F1 dropped from ~0.97 to 0.66-0.69, 
+  PR-AUC from ~0.99 to ~0.77-0.78 — now in a realistic range for churn 
+  prediction.
+- Feature importance shifted from event-derived features dominating to 
+  Contract/InternetService dominating, matching original EDA findings — 
+  good sign the pipeline is measuring real signal, not an artifact.
+
+
+  ## Redis caching (Week 2)
+
+- Implemented cache-aside pattern for customer feature lookups: check 
+  Redis first, fall back to Postgres on miss, populate cache on the way 
+  back. TTL set to [X]s — [your stated reasoning].
+- Measured [X]ms cache hit vs [X]ms cache miss latency on local setup.
+
+## Redis caching validated (Week 2)
+
+- Cache-aside pattern confirmed working: 10-92x speedup on cache hits 
+  (2-5ms) vs misses (45-194ms). TTL 300s.
+- Miss latency inflated by opening a fresh Postgres connection per call 
+  (no pooling) — acceptable for validation, flagged as a real 
+  improvement for the serving layer (connection pooling via psycopg2 
+  pool or SQLAlchemy engine).
+
+  ## Serving layer + bug fixes (Week 3)
+
+- Found and fixed a serialization bug: MLflow was logging only the bare 
+  XGBClassifier, not the fitted preprocessing pipeline (one-hot encoding). 
+  Serving would have silently produced wrong predictions on raw input. 
+  Fixed by logging the full sklearn Pipeline.
+- Built /predict endpoint (FastAPI): model loaded once at startup via 
+  lifespan hook, not per-request.
+- Replaced per-call Postgres connections with a connection pool 
+  (SimpleConnectionPool). Result: hit/miss gap narrowed from 10-90x 
+  (standalone cache test) to near-identical (~200-240ms both) once 
+  pooled — remaining latency is now FastAPI/HTTP overhead and 
+  predict_proba, not the DB round trip. Honest finding: at this scale, 
+  connection pooling mattered more than the cache itself for reducing 
+  end-to-end latency.
+
+  ## Drift monitoring + async retraining (Week 3 close)
+
+- Evidently drift report: injected shifts in 3 numeric columns, 2/3 
+  correctly flagged (avg_usage_count, avg_session_duration_recent_30d). 
+  avg_resolution_time_hours (+20% shift) did NOT trigger — its high-
+  variance/right-skewed distribution dampens normalized drift score for 
+  a proportional shift. Dataset-level drift not flagged (12.5% of 
+  columns, below 50% threshold) — a reminder that per-column and 
+  dataset-level drift are different questions.
+- Celery worker required --pool=solo on Windows (prefork pool relies on 
+  fork(), unsupported natively). This means sequential task execution, 
+  not real concurrency — acceptable for demo, would need Linux deployment 
+  or --pool=threads for production concurrency.
+- Async retrain verified: task triggered via .delay(), completed in 156s, 
+  confirmed via fresh MLflow run (not a no-op).
+

@@ -1,0 +1,24 @@
+INFO:     Will watch for changes in these directories: ['C:\\Users\\Mi\\OneDrive\\Desktop\\ml-insight-platform']
+INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
+INFO:     Started reloader process [20604] using StatReload
+INFO:     Started server process [13608]
+INFO:     Waiting for application startup.
+2026-09-21 23:31:17,139 INFO Loaded xgboost model from run c17ce8742a764552a51fa80bff6a3c63
+INFO:     Application startup complete.
+INFO:     127.0.0.1:54511 - "GET /health HTTP/1.1" 200 OK
+2026-09-21 23:31:59,739 INFO Cache MISS for 2197-OMWGI
+INFO:     127.0.0.1:64201 - "POST /predict HTTP/1.1" 200 OK
+2026-09-21 23:32:00,300 INFO Cache HIT for 2197-OMWGI
+INFO:     127.0.0.1:64204 - "POST /predict HTTP/1.1" 200 OK
+2026-09-21 23:32:00,614 INFO Cache MISS for 7660-HDPJV
+INFO:     127.0.0.1:64206 - "POST /predict HTTP/1.1" 200 OK
+2026-09-21 23:32:00,928 INFO Cache HIT for 7660-HDPJV
+INFO:     127.0.0.1:64208 - "POST /predict HTTP/1.1" 200 OK
+2026-09-21 23:32:01,263 INFO Cache MISS for 7537-CBQUZ
+INFO:     127.0.0.1:64210 - "POST /predict HTTP/1.1" 200 OK
+2026-09-21 23:32:01,586 INFO Cache HIT for 7537-CBQUZ
+INFO:     127.0.0.1:64212 - "POST /predict HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64939 - "GET / HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:64939 - "GET /favicon.ico HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:62635 - "GET /docs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62635 - "GET /openapi.json HTTP/1.1" 200 OK

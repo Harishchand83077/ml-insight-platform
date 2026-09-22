@@ -1,0 +1,25 @@
+artifact_path: file:///C:/Users/Mi/OneDrive/Desktop/ml-insight-platform/mlruns/1/models/m-c3285a0d90f74556b35a6ba9a6b1197b/artifacts
+flavors:
+  python_function:
+    env:
+      conda: conda.yaml
+      virtualenv: python_env.yaml
+    loader_module: mlflow.sklearn
+    model_path: model.skops
+    predict_fn: predict
+    python_version: 3.11.9
+  sklearn:
+    code: null
+    pickled_model: model.skops
+    serialization_format: skops
+    sklearn_version: 1.9.1
+    skops_trusted_types:
+    - xgboost.core.Booster
+    - xgboost.sklearn.XGBClassifier
+mlflow_version: 3.16.1
+model_id: m-c3285a0d90f74556b35a6ba9a6b1197b
+model_size_bytes: 441922
+model_uuid: m-c3285a0d90f74556b35a6ba9a6b1197b
+prompts: null
+run_id: c17ce8742a764552a51fa80bff6a3c63
+utc_time_created: '2026-09-21 17:20:01.274946'

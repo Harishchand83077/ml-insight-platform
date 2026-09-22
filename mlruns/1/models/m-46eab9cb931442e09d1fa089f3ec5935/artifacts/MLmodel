@@ -1,0 +1,23 @@
+artifact_path: file:///C:/Users/Mi/OneDrive/Desktop/ml-insight-platform/mlruns/1/models/m-46eab9cb931442e09d1fa089f3ec5935/artifacts
+flavors:
+  python_function:
+    env:
+      conda: conda.yaml
+      virtualenv: python_env.yaml
+    loader_module: mlflow.sklearn
+    model_path: model.skops
+    predict_fn: predict
+    python_version: 3.11.9
+  sklearn:
+    code: null
+    pickled_model: model.skops
+    serialization_format: skops
+    sklearn_version: 1.9.1
+    skops_trusted_types: null
+mlflow_version: 3.16.1
+model_id: m-46eab9cb931442e09d1fa089f3ec5935
+model_size_bytes: 121556
+model_uuid: m-46eab9cb931442e09d1fa089f3ec5935
+prompts: null
+run_id: e2c20b3e19b14128921ed8498ca7ac70
+utc_time_created: '2026-09-21 17:11:14.394499'
