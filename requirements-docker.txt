@@ -1,0 +1,25 @@
+# Curated runtime dependencies for the FastAPI service (src/serving/api.py
+# and everything it imports: the agent, feature cache, and the subset of
+# train_baseline.py needed for inference). This is a small subset of the
+# full requirements.txt, which is the entire local dev environment
+# (Jupyter, notebook, pytest, ruff, faker, evidently, ...) - none of that
+# is needed to serve requests, so it's deliberately left out of the image.
+fastapi==0.141.1
+uvicorn==0.53.0
+pydantic
+mlflow==3.16.1
+scikit-learn
+xgboost==3.2.0
+pandas==3.0.5
+numpy==2.4.6
+matplotlib==3.11.2
+psycopg2-binary==2.9.13
+redis==8.1.0
+python-dotenv==1.2.3
+langchain==1.4.2
+langchain-core
+langchain-groq==1.1.3
+langchain-chroma==1.1.0
+langchain-huggingface==1.2.2
+sentence-transformers==6.1.0
+requests==2.34.2

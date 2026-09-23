@@ -107,3 +107,168 @@ docker exec -it postgres-ml psql -U postgres -d ml_insight in this we used -it t
 
 
 docker exec <container> <command>
+
+# CI/CD, Redis & Production Engineering Notes
+
+## 1. What is CI?
+
+**CI = Continuous Integration**
+
+CI automatically checks code whenever developers push code or create a Pull Request.
+
+Typical CI pipeline:
+
+Developer pushes code
+        ↓
+GitHub Actions triggered
+        ↓
+Set up Python
+        ↓
+Install dependencies
+        ↓
+Lint
+        ↓
+Run unit tests
+        ↓
+Measure test coverage
+        ↓
+Build Docker image
+        ↓
+PASS / FAIL
+
+### Why CI?
+
+CI catches bugs and broken builds before code is merged or deployed.
+
+### Interview answer
+
+> "Continuous Integration automatically builds and tests code whenever changes are pushed or submitted through a pull request. It helps catch regressions early and ensures that the codebase remains in a working state."
+
+---
+
+# 2. GitHub Actions
+
+GitHub Actions is a CI/CD platform integrated with GitHub.
+
+Workflow files are stored under:
+
+.github/workflows/
+
+Example:
+
+.github/workflows/ci.yml
+
+GitHub automatically detects workflow files in this directory.
+
+### Typical triggers
+
+- `push` → run when code is pushed
+- `pull_request` → run when a PR is created/updated
+
+Example concept:
+
+```yaml
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+
+
+CI runs on a clean machine, so it does not automatically have the packages installed on your computer.
+
+Therefore CI installs:
+
+pip install -r requirements.txt
+
+The requirements file should contain the project's required Python dependencies.
+Python Version Consistency
+
+Keep Python versions consistent across:
+
+Local development
+CI
+Docke
+
+Linting
+
+A linter analyzes source code for potential errors, bugs, bad practices, and sometimes style problems.
+
+For modern Python projects, Ruff is a good simple choice.
+
+Example:
+
+ruff check src tests
+
+Linting is different from testing.
+
+Linting
+
+Checks the source code statically.
+
+Testing
+
+Actually executes code and checks behavior.
+
+I keep unit tests separate from integration tests because unit tests should be isolated and reproducible. Integration tests require external services and credentials, so I run them separately unless those dependencies are explicitly provisioned in C
+
+pytest is a Python testing framework.
+
+Example:
+
+pytest tests/unit
+
+means:
+
+Run the tests inside tests/unit.
+
+A failing test should cause CI to fail.
+
+GitHub Actions Artifacts
+
+An artifact is a file generated during a CI run that can be stored and inspected later.
+
+Examples:
+
+Coverage HTML report
+Test report
+Build output
+Logs
+
+Docker Build in CI
+
+Passing unit tests does not guarantee that the Docker image can be built.the application may still fail when deploy so ci should also run docker build
+
+
+Connection Pooling
+
+Connection pooling means maintaining a group of reusable database connections instead of creating a new connection for every database operation.
+
+Without pooling:
+
+Event
+ ↓
+Create DB connection
+ ↓
+Query
+ ↓
+Close
+
+Repeated thousands of times.
+
+With pooling:
+
+             Connection Pool
+          ┌────┬────┬────┬────┐
+          │ C1 │ C2 │ C3 │ C4 │
+          └────┴────┴────┴────┘
+                  ↓
+              PostgreSQL
+
+Application:
+Get connection
+ ↓
+Use connection
+ ↓
+Return connection to pool

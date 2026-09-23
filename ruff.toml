@@ -1,0 +1,5 @@
+# Keep CI linting to real errors only (syntax errors, undefined names,
+# unused imports/variables) - not style/formatting preferences like
+# import ordering, exception-handling style, or line length.
+[lint]
+select = ["E9", "F"]

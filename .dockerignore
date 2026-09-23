@@ -1,0 +1,16 @@
+venv/
+frontend/
+node_modules/
+data/
+mlruns/
+mlruns.db
+notebooks/
+tests/
+.git/
+.pytest_cache/
+.coverage
+htmlcov/
+__pycache__/
+*.pyc
+.env
+*.log

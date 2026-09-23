@@ -1,5 +1,7 @@
 # ML Insight Platform
 
+[![CI](https://github.com/Harishchand83077/ml-insight-platform/actions/workflows/ci.yml/badge.svg)](https://github.com/Harishchand83077/ml-insight-platform/actions/workflows/ci.yml)
+
 A churn-prediction platform for a telecom customer base, built around an
 event-driven data pipeline rather than a static training script. Synthetic
 customer behavioral events (logins, support tickets, feature usage) are
@@ -142,9 +144,9 @@ python src/pipelines/trigger_retrain.py
 - FastAPI serving endpoint (`/health`, `/predict`) loading the model once at startup
 - Evidently drift monitoring comparing training-time vs. simulated current feature distributions
 - Celery + Redis async retraining, triggered independently of the request path
+- LangChain agent (`src/agent/`) with tool-calling over churn prediction, aggregate SQL-style queries, and RAG over the project's own docs, served through `/chat` with per-session memory and a semantic response cache; a minimal React chat frontend in `frontend/`
+- Unit test suite (`tests/unit`, pytest + coverage) and integration tests (`tests/integration`, opt-in via `--run-integration`)
+- CI (`.github/workflows/ci.yml`): lint (ruff) + unit tests + coverage on every push/PR to main, plus a separate job confirming the FastAPI service's Docker image builds
 
 **Planned:**
-- LangChain agent (natural-language interface over the churn data / predictions)
-- Automated tests (unit + integration)
-- CI/CD pipeline
 - Deployment (currently local-only, no cloud target set up)
