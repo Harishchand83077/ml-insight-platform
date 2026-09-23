@@ -77,14 +77,23 @@ COLUMN_MAP = {
 }
 
 
+def clean_total_charges(df):
+    """Blank/whitespace-only TotalCharges values (all tenure=0 customers,
+    confirmed during EDA) become 0 rather than NULL, dropped, or
+    mean-imputed - they're legitimately zero-charge, not missing data."""
+    df = df.copy()
+    df["TotalCharges"] = df["TotalCharges"].astype(str).str.strip().replace("", "0")
+    df["TotalCharges"] = pd.to_numeric(df["TotalCharges"])
+    return df
+
+
 def load_dataframe():
     df = pd.read_csv(RAW_CSV)
 
     blank_total_charges = df["TotalCharges"].astype(str).str.strip().eq("").sum()
     print(f"Blank TotalCharges values (set to 0): {blank_total_charges}")
 
-    df["TotalCharges"] = df["TotalCharges"].astype(str).str.strip().replace("", "0")
-    df["TotalCharges"] = pd.to_numeric(df["TotalCharges"])
+    df = clean_total_charges(df)
 
     return df.rename(columns=COLUMN_MAP)[list(COLUMN_MAP.values())]
 

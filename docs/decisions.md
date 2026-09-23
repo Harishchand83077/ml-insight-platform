@@ -173,3 +173,105 @@
 - Async retrain verified: task triggered via .delay(), completed in 156s, 
   confirmed via fresh MLflow run (not a no-op).
 
+  ## Dependency drift encountered (Week 5)
+
+- LangChain 1.0 removed create_tool_calling_agent/AgentExecutor mid-build; 
+  adopted current create_agent (LangGraph-based) pattern instead of 
+  pinning to deprecated 0.3.x.
+- Originally planned Groq model (llama-3.3-70b-versatile) no longer 
+  available on the API; switched to openai/gpt-oss-120b, the largest 
+  available general-purpose model on the free tier.
+
+
+  ## First working agent tool (Week 5)
+
+- predict_churn_tool verified end-to-end: agent correctly extracts 
+  customer_id from natural language, calls /predict, synthesizes a 
+  clean answer from the JSON response. Second call confirmed cache_hit, 
+  validating the agent exercises the full serving stack, not a shortcut.
+- Fixed a UTF-8/cp1252 console encoding crash on Windows when printing 
+  LLM output containing non-ASCII characters (e.g. non-breaking hyphens) 
+  — common real-world issue serving LLM output on Windows consoles.
+
+
+
+  ## SQL tool with injection defense (Week 5)
+
+- Added get_churn_rate_by_column and get_customer_count as constrained 
+  tools instead of freeform text-to-SQL. Column names (identifiers) 
+  validated against a static allowlist and interpolated directly — 
+  parameterization only works for values, not identifiers, so this is 
+  the correct defense, not just an extra check. Filter values go through 
+  psycopg2 parameterization.
+- Verified injection attempt ('DROP TABLE...') is rejected by the 
+  allowlist.
+- Agent correctly mapped "month-to-month" (a value) to the contract 
+  column (schema-grounded reasoning, not keyword matching) and reported 
+  42.7% without fabrication.
+
+
+  ## RAG knowledge base (Week 6)
+
+- Built local RAG pipeline: glossary.md + decisions.md → chunked (~500 
+  tokens) → embedded with local sentence-transformers (all-MiniLM-L6-v2) 
+  → stored in Chroma. Zero-cost, fully local except the LLM call itself.
+- Found: embedding model truncates at 256 tokens, so 500-token chunks 
+  lose the tail from the embedding vector (full text still stored/
+  retrieved). Documented; [decide: left as-is / reduced chunk size / 
+  switched to bge-small-en-v1.5].
+- query_project_docs_tool returns raw retrieved context, not a 
+  synthesized answer — keeps grounding visible to the main agent.
+
+  ## Embedding model fix (Week 6)
+
+- Switched from all-MiniLM-L6-v2 (256-token limit, truncated our 500-token 
+  chunks) to BAAI/bge-small-en-v1.5 (512-token window, full chunk coverage). 
+  Rebuilt Chroma store from scratch — embeddings across models aren't 
+  compatible, can't be merged into an existing index.
+
+
+
+  ## Chat endpoint (Week 6)
+
+- Fixed a same-directory vs package import mismatch (agent.py assumed 
+  standalone execution, broke when imported via uvicorn's package path) 
+  with a try/except import fallback.
+- POST /chat + DELETE /chat/{session_id}: in-memory per-session history 
+  (explicitly not production-durable — no restart survival, not 
+  multi-instance safe; Redis-backed sessions would be the real fix).
+- Verified multi-turn memory: agent recalled a specific customer's churn 
+  probability across turns without re-querying, correctly declined to 
+  fabricate data it had no tool for, and tool_calls extraction correctly 
+  scopes to only the current turn, not cumulative history.
+
+
+  ## Semantic response caching (Week 6 close)
+
+- Implemented brute-force cosine similarity cache (not a vector DB — 
+  unnecessary at this scale), using the same embedding model as RAG. 
+  Capped at 200 entries in Redis, threshold 0.90.
+- Restricted to first-message-of-session only: multi-turn context 
+  changes question meaning, so caching mid-conversation would risk 
+  returning wrong cached answers. Verified this holds even for a 
+  near-identical rephrase in an ongoing session (correctly bypassed).
+- Verified via logs + Redis LLEN, not response inspection alone: 
+  confirmed genuine cache hit (0.9502 similarity, zero Groq calls) vs. 
+  genuine miss (real Groq call logged) in both directions.
+
+  ## Testing (Week 7)
+
+- 38 unit tests, all mocked (no live Postgres/Redis/Groq needed), 
+  0 failed, 4 integration tests correctly gated behind --run-integration.
+- Refactored build_features.py and load_static_data.py to extract pure 
+  functions (build_feature_table, clean_total_charges) from I/O-bound 
+  main() functions — writing tests surfaced logic/I/O coupling that 
+  needed separating.
+- Coverage: 18% of full src/ (expected — most modules need live infra, 
+  covered by integration tests instead), but 49-88% on the pure-logic 
+  modules unit tests actually target (semantic_cache, build_features, 
+  SQL allowlist, load_static_data).
+- SQL injection tests verify rejection happens before any DB connection 
+  is attempted (psycopg2.connect patched to raise if reached), not just 
+  that the final query string looks safe.
+  
+

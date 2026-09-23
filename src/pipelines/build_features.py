@@ -169,14 +169,9 @@ def build_usage_features(feature_usage_logs):
     )
 
 
-def main():
-    conn = psycopg2.connect(**PG_DSN)
-
-    customers = pd.read_sql("SELECT * FROM customers", conn)
-    login_events = pd.read_sql("SELECT * FROM login_events", conn, parse_dates=["timestamp"])
-    support_tickets = pd.read_sql("SELECT * FROM support_tickets", conn, parse_dates=["timestamp"])
-    feature_usage_logs = pd.read_sql("SELECT * FROM feature_usage_logs", conn, parse_dates=["timestamp"])
-
+def build_feature_table(customers, login_events, support_tickets, feature_usage_logs):
+    """Pure composition step (no I/O): joins the per-source feature builders
+    and zero-fills customers with no rows in a given event table."""
     features = build_customer_features(customers)
     features = features.merge(build_login_features(login_events), on="customer_id", how="left")
     features = features.merge(build_ticket_features(support_tickets), on="customer_id", how="left")
@@ -186,7 +181,18 @@ def main():
     features["total_logins_90d"] = features["total_logins_90d"].astype(int)
     features["num_tickets"] = features["num_tickets"].astype(int)
 
-    features = features[FEATURE_COLUMNS]
+    return features[FEATURE_COLUMNS]
+
+
+def main():
+    conn = psycopg2.connect(**PG_DSN)
+
+    customers = pd.read_sql("SELECT * FROM customers", conn)
+    login_events = pd.read_sql("SELECT * FROM login_events", conn, parse_dates=["timestamp"])
+    support_tickets = pd.read_sql("SELECT * FROM support_tickets", conn, parse_dates=["timestamp"])
+    feature_usage_logs = pd.read_sql("SELECT * FROM feature_usage_logs", conn, parse_dates=["timestamp"])
+
+    features = build_feature_table(customers, login_events, support_tickets, feature_usage_logs)
 
     os.makedirs(os.path.dirname(FEATURES_CSV), exist_ok=True)
     features.to_csv(FEATURES_CSV, index=False)

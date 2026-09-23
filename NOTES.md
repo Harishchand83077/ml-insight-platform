@@ -104,3 +104,6 @@ psql → PostgreSQL's command-line tool.
 -d ml_insight → Connect to the ml_insight database.
 -c → Execute the SQL/psql command that comes after it.
 docker exec -it postgres-ml psql -U postgres -d ml_insight in this we used -it to open an interactive terminal session inside docker container so that we can run multiple commands
+
+
+docker exec <container> <command>
