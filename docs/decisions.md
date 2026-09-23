@@ -273,5 +273,23 @@
 - SQL injection tests verify rejection happens before any DB connection 
   is attempted (psycopg2.connect patched to raise if reached), not just 
   that the final query string looks safe.
+
+
+  ## CI/CD (Week 7 close)
+
+- GitHub Actions: lint (ruff, errors only) + unit tests + coverage, 
+  plus a separate Docker build-verification job. Both passing 
+  (run 35891156103).
+- Split requirements.txt (full dev environment) from 
+  requirements-docker.txt (curated runtime-only deps, ~50 vs ~280 
+  packages, CPU-only torch) — smaller, faster, more correct serving 
+  image; dev tools have no business in a production container.
+- Real incident during this work: force-killing Docker's processes to 
+  clear a stuck build left an orphaned WSL2 instance holding the data 
+  disk, breaking Docker Desktop entirely. Fixed non-destructively 
+  (stopped Docker Desktop's app first so it wouldn't keep relaunching 
+  the stuck WSL instance, then wsl --shutdown, then relaunched) — 
+  verified zero data loss (all 7,043 Postgres rows, all containers/
+  volumes intact) before proceeding.
   
 

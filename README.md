@@ -9,9 +9,13 @@ streamed through RabbitMQ into Postgres, joined with the customer record
 into a model-ready feature table, and served through a FastAPI endpoint
 backed by a Redis cache. Model training is tracked in MLflow, feature
 drift is monitored with Evidently, and retraining runs asynchronously via
-Celery — the goal is a working end-to-end ML system with real
-infrastructure seams (queue, cache, DB, async worker), not just a
-notebook that outputs a metric.
+Celery. A LangGraph agent sits on top of the same serving layer, answering
+natural-language questions about a customer's churn risk, aggregate churn
+statistics, and the project's own modeling decisions (via RAG over
+`docs/`), exposed through a `/chat` endpoint and a small React frontend —
+the goal is a working end-to-end ML system with real infrastructure seams
+(queue, cache, DB, async worker, agent), not just a notebook that outputs
+a metric.
 
 ## Architecture
 
@@ -49,6 +53,20 @@ flowchart LR
         BROKER --> WORKER["Celery worker<br/>retrain_model task"]
         WORKER --> TRAIN
     end
+
+    subgraph "Agent & Chat"
+        DOCS[("docs/glossary.md<br/>docs/decisions.md")] --> KB["build_knowledge_base.py"]
+        KB --> CHROMA[("Chroma<br/>data/chroma_db")]
+        UI["React chat UI<br/>frontend/"] --> CHAT["FastAPI /chat"]
+        CHAT --> SEMCACHE["semantic_cache.py<br/>(first message only)"]
+        SEMCACHE <--> REDIS
+        CHAT --> AGENT["agent.py<br/>LangGraph create_agent"]
+        AGENT --> GROQ[("Groq API<br/>gpt-oss-120b")]
+        AGENT --> TOOLS["tools.py:<br/>predict_churn_tool, SQL-style<br/>query tools, RAG tool"]
+        TOOLS --> API
+        TOOLS --> PGF
+        TOOLS --> CHROMA
+    end
 ```
 
 ## Tech stack
@@ -65,7 +83,13 @@ flowchart LR
 | **FastAPI + Uvicorn** | Serving layer: `GET /health` and `POST /predict`. Model is loaded once at process startup, not per-request. |
 | **Evidently** | Data drift detection between the training-time reference distribution and a simulated "current" sample, with an HTML report and per-column drift scores. |
 | **Celery** | Decouples retraining from the request path — `trigger_retrain.py` enqueues a job, a worker process runs the actual training. |
-| **Docker** | Runs RabbitMQ, Postgres, and Redis as isolated local services (`rabbitmq:3-management`, `postgres:16`, `redis:7`). |
+| **LangChain + LangGraph** | The churn-analytics agent (`create_agent`, the current LangGraph-based tool-calling pattern) with four tools bound to it: prediction lookup, two SQL-style query tools with a column allowlist (no agent-constructed SQL), and a RAG tool over the project's own docs. |
+| **Groq** | LLM inference for the agent (`openai/gpt-oss-120b`) — fast, free-tier hosted inference so the agent doesn't need a local GPU. |
+| **ChromaDB + sentence-transformers** | Local, free retrieval-augmented generation: `docs/glossary.md` and `docs/decisions.md` are chunked, embedded with `BAAI/bge-small-en-v1.5`, and stored in a local Chroma vector store the RAG tool queries. |
+| **React + Vite** | Minimal dark-themed chat UI (`frontend/`) against `/chat` and `/chat/{session_id}`, with per-session memory, collapsible tool-call inspection, and Markdown-rendered responses. |
+| **pytest + ruff** | Unit tests with coverage (`tests/unit`, DB/Redis/LLM calls mocked) and opt-in integration tests (`tests/integration`, real services); ruff scoped to real errors only, not style. |
+| **GitHub Actions** | CI on every push/PR to `main`: lint + unit tests + coverage, plus a separate job confirming the FastAPI service's Docker image builds. |
+| **Docker** | Runs RabbitMQ, Postgres, and Redis as isolated local services (`rabbitmq:3-management`, `postgres:16`, `redis:7`), and packages the FastAPI service itself for CI's build-verification job. |
 
 ## How to run locally
 
@@ -118,18 +142,49 @@ mlflow ui --backend-store-uri sqlite:///mlruns.db --port 5000   # http://localho
 python src/models/monitor_drift.py           # writes reports/drift_report.html
 ```
 
-**8. Serve predictions**
+**8. Set up the agent**
+
+```bash
+echo GROQ_API_KEY=your-key-here > .env   # free tier at console.groq.com
+python src/agent/build_knowledge_base.py   # embeds docs/*.md into data/chroma_db/
+```
+
+**9. Serve predictions and chat**
 
 ```bash
 uvicorn src.serving.api:app --reload --port 8000
 curl -X POST http://localhost:8000/predict -H "Content-Type: application/json" -d "{\"customer_id\": \"7590-VHVEG\"}"
+curl -X POST http://localhost:8000/chat -H "Content-Type: application/json" -d "{\"session_id\": \"test-1\", \"message\": \"What is the churn risk for customer 7590-VHVEG?\"}"
 ```
 
-**9. Trigger an async retrain**
+**10. Run the chat frontend**
+
+```bash
+cd frontend
+npm install
+npm run dev   # http://localhost:5173
+```
+
+**11. Trigger an async retrain**
 
 ```bash
 celery -A src.pipelines.retrain_task worker --loglevel=info --pool=solo   # --pool=solo is required on Windows
 python src/pipelines/trigger_retrain.py
+```
+
+**12. Run the tests**
+
+```bash
+pytest tests/unit                              # fast, no external services needed
+pytest tests/unit --cov=src --cov-report=term-missing   # with coverage
+ruff check src tests                           # lint (real errors only)
+pytest tests/integration --run-integration     # needs Postgres/Redis + GROQ_API_KEY, makes real LLM calls
+```
+
+**13. Build the FastAPI service's Docker image** (optional - CI does this automatically)
+
+```bash
+docker build -t ml-insight-api .   # uses requirements-docker.txt, a curated runtime-only subset of requirements.txt
 ```
 
 ## Current status
