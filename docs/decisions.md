@@ -319,3 +319,18 @@
 - Semantic + feature caches both climbed to 80-90% hit rate under load, 
   measurably absorbing pressure that would otherwise hit Groq/Postgres 
   directly.
+
+  ## Load test fixes verified (Week 8)
+
+- Fixed 413/429 handling (checked actual Groq SDK exception hierarchy — 
+  429 maps to RateLimitError but 413 falls through to generic 
+  APIStatusError, so check .status_code directly rather than relying on 
+  named exception types alone) and raised connection pool 5→20.
+- Re-test: throughput 3.16→7.00 req/s (2.2x), /chat failures 46.75%→6.42%, 
+  /predict p99 11s→6.7s, /chat p99 32s→24s. Remaining /chat failures are 
+  now clean 503s (working as designed), not opaque 500s.
+- New finding at higher throughput: ~10 ConnectionResetErrors, likely 
+  uvicorn's single-process dev server (--reload) becoming the next 
+  bottleneck. Not fixed — noted as the natural next constraint a 
+  production deployment (multi-worker uvicorn/gunicorn) would need to 
+  address, out of scope for this load-testing pass.

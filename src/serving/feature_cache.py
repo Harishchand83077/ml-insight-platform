@@ -27,7 +27,15 @@ REDIS_PORT = int(os.environ.get("REDIS_PORT", "6379"))
 CACHE_TTL_SECONDS = 300
 CACHE_KEY_PREFIX = "features"
 POOL_MIN_CONN = 1
-POOL_MAX_CONN = 5
+# Bumped from 5 -> 20 after load testing showed /predict's p95/p99 latency
+# degrading badly under concurrent load (requests queuing for a pooled
+# connection). A local Postgres instance handles 20 connections easily, so
+# this is a cheap fix - but it's not unlimited scaling: it just raises the
+# concurrency level where the same queuing problem reappears, rather than
+# removing it. A sustained load higher than this would need the same
+# investigation again (or a properly sized pool per expected traffic,
+# read replicas, etc.).
+POOL_MAX_CONN = 20
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("feature_cache")
