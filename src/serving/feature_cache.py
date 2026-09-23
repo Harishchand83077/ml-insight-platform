@@ -12,6 +12,7 @@ import os
 import psycopg2.extras
 import psycopg2.pool
 import redis
+from prometheus_client import Counter
 
 PG_DSN = {
     "host": os.environ.get("PG_HOST", "localhost"),
@@ -34,6 +35,12 @@ logger = logging.getLogger("feature_cache")
 _redis_client = None
 _pg_pool = psycopg2.pool.SimpleConnectionPool(POOL_MIN_CONN, POOL_MAX_CONN, **PG_DSN)
 
+FEATURE_CACHE_COUNTER = Counter(
+    "feature_cache_requests_total",
+    "get_customer_features lookups, by whether they hit Redis or fell through to Postgres",
+    ["result"],  # "hit" or "miss"
+)
+
 
 def get_redis_client():
     global _redis_client
@@ -50,9 +57,11 @@ def get_customer_features(customer_id):
     cached = r.get(cache_key)
     if cached is not None:
         logger.info("Cache HIT for %s", customer_id)
+        FEATURE_CACHE_COUNTER.labels(result="hit").inc()
         return json.loads(cached), True
 
     logger.info("Cache MISS for %s", customer_id)
+    FEATURE_CACHE_COUNTER.labels(result="miss").inc()
     conn = _pg_pool.getconn()
     try:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:

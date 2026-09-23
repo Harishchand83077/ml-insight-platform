@@ -1,105 +1,261 @@
 INFO:     Will watch for changes in these directories: ['C:\\Users\\Mi\\OneDrive\\Desktop\\ml-insight-platform']
 INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
-INFO:     Started reloader process [22584] using WatchFiles
-INFO:     Started server process [27160]
+INFO:     Started reloader process [18280] using WatchFiles
+INFO:     Started server process [5400]
 INFO:     Waiting for application startup.
 Downloading artifacts:   0%|          | 0/1 [00:00<?, ?it/s]Downloading artifacts:   0%|          | 0/1 [00:00<?, ?it/s]
-Downloading artifacts:   0%|          | 0/5 [00:00<?, ?it/s]Downloading artifacts:  20%|##        | 1/5 [00:00<?, ?it/s]Downloading artifacts:  40%|####      | 2/5 [00:00<?, ?it/s]Downloading artifacts:  60%|######    | 3/5 [00:00<00:00, 518.18it/s]Downloading artifacts:  80%|########  | 4/5 [00:00<00:00, 510.78it/s]Downloading artifacts: 100%|##########| 5/5 [00:00<00:00, 418.88it/s]Downloading artifacts: 100%|##########| 5/5 [00:00<00:00, 418.88it/s]
-2026-09-23 02:07:47,690 INFO Loaded xgboost model from run 5f01763397ae41e8b4655fee7053b7b6
+Downloading artifacts:   0%|          | 0/5 [00:00<?, ?it/s]Downloading artifacts:  20%|##        | 1/5 [00:00<00:00, 76.93it/s]Downloading artifacts:  40%|####      | 2/5 [00:00<00:00, 101.41it/s]Downloading artifacts:  60%|######    | 3/5 [00:00<00:00, 122.93it/s]Downloading artifacts:  80%|########  | 4/5 [00:00<00:00, 101.35it/s]Downloading artifacts: 100%|##########| 5/5 [00:00<00:00, 82.42it/s] Downloading artifacts: 100%|##########| 5/5 [00:00<00:00, 82.42it/s]
+2026-09-23 23:04:57,392 INFO Loaded xgboost model from run 5f01763397ae41e8b4655fee7053b7b6
 INFO:     Application startup complete.
-INFO:     127.0.0.1:64295 - "GET /openapi.json HTTP/1.1" 200 OK
-2026-09-23 02:08:34,901 INFO HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
-2026-09-23 02:08:37,091 INFO Cache MISS for 7590-VHVEG
-INFO:     127.0.0.1:58362 - "POST /predict HTTP/1.1" 200 OK
-2026-09-23 02:08:38,388 INFO HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
-2026-09-23 02:09:45,632 INFO No device provided, using cpu
-2026-09-23 02:09:46,794 INFO HTTP Request: HEAD https://huggingface.co/BAAI/bge-small-en-v1.5/resolve/main/modules.json "HTTP/1.1 307 Temporary Redirect"
-2026-09-23 02:09:46,807 INFO HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/BAAI/bge-small-en-v1.5/5c38ec7c405ec4b44b94cc5a9bb96e735b38267a/modules.json?%2FBAAI%2Fbge-small-en-v1.5%2Fresolve%2Fmain%2Fmodules.json=&etag=%22952a9b81c0bfd99800fabf352f69c7ccd46c5e43%22 "HTTP/1.1 200 OK"
-2026-09-23 02:09:47,101 INFO HTTP Request: HEAD https://huggingface.co/BAAI/bge-small-en-v1.5/resolve/main/config_sentence_transformers.json "HTTP/1.1 307 Temporary Redirect"
-2026-09-23 02:09:47,130 INFO HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/BAAI/bge-small-en-v1.5/5c38ec7c405ec4b44b94cc5a9bb96e735b38267a/config_sentence_transformers.json?%2FBAAI%2Fbge-small-en-v1.5%2Fresolve%2Fmain%2Fconfig_sentence_transformers.json=&etag=%22dcb0c0d97d09b930d13600b1a773ddb27e441aab%22 "HTTP/1.1 200 OK"
-2026-09-23 02:09:47,136 INFO Loading SentenceTransformer model from BAAI/bge-small-en-v1.5.
-2026-09-23 02:09:47,398 INFO HTTP Request: HEAD https://huggingface.co/BAAI/bge-small-en-v1.5/resolve/main/config_sentence_transformers.json "HTTP/1.1 307 Temporary Redirect"
-2026-09-23 02:09:47,413 INFO HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/BAAI/bge-small-en-v1.5/5c38ec7c405ec4b44b94cc5a9bb96e735b38267a/config_sentence_transformers.json?%2FBAAI%2Fbge-small-en-v1.5%2Fresolve%2Fmain%2Fconfig_sentence_transformers.json=&etag=%22dcb0c0d97d09b930d13600b1a773ddb27e441aab%22 "HTTP/1.1 200 OK"
-2026-09-23 02:09:47,714 INFO HTTP Request: HEAD https://huggingface.co/BAAI/bge-small-en-v1.5/resolve/main/README.md "HTTP/1.1 307 Temporary Redirect"
-2026-09-23 02:09:47,726 INFO HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/BAAI/bge-small-en-v1.5/5c38ec7c405ec4b44b94cc5a9bb96e735b38267a/README.md?%2FBAAI%2Fbge-small-en-v1.5%2Fresolve%2Fmain%2FREADME.md=&etag=%228b8567d75ffa619486d9590cb0eb76d66ad46c49%22 "HTTP/1.1 200 OK"
-2026-09-23 02:09:48,022 INFO HTTP Request: HEAD https://huggingface.co/BAAI/bge-small-en-v1.5/resolve/main/modules.json "HTTP/1.1 307 Temporary Redirect"
-2026-09-23 02:09:48,040 INFO HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/BAAI/bge-small-en-v1.5/5c38ec7c405ec4b44b94cc5a9bb96e735b38267a/modules.json?%2FBAAI%2Fbge-small-en-v1.5%2Fresolve%2Fmain%2Fmodules.json=&etag=%22952a9b81c0bfd99800fabf352f69c7ccd46c5e43%22 "HTTP/1.1 200 OK"
-2026-09-23 02:09:48,330 INFO HTTP Request: HEAD https://huggingface.co/BAAI/bge-small-en-v1.5/resolve/main/sentence_bert_config.json "HTTP/1.1 307 Temporary Redirect"
-2026-09-23 02:09:48,345 INFO HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/BAAI/bge-small-en-v1.5/5c38ec7c405ec4b44b94cc5a9bb96e735b38267a/sentence_bert_config.json?%2FBAAI%2Fbge-small-en-v1.5%2Fresolve%2Fmain%2Fsentence_bert_config.json=&etag=%22ea85692bff64b0d1917833c31ddbca8ab10f5455%22 "HTTP/1.1 200 OK"
-2026-09-23 02:09:48,583 INFO HTTP Request: HEAD https://huggingface.co/BAAI/bge-small-en-v1.5/resolve/main/adapter_config.json "HTTP/1.1 404 Not Found"
-2026-09-23 02:09:48,824 INFO HTTP Request: HEAD https://huggingface.co/BAAI/bge-small-en-v1.5/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
-2026-09-23 02:09:48,840 INFO HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/BAAI/bge-small-en-v1.5/5c38ec7c405ec4b44b94cc5a9bb96e735b38267a/config.json?%2FBAAI%2Fbge-small-en-v1.5%2Fresolve%2Fmain%2Fconfig.json=&etag=%223992bf890728a92476c700e6e657fd696eb94160%22 "HTTP/1.1 200 OK"
-Loading weights:   0%|          | 0/199 [00:00<?, ?it/s]Loading weights:  21%|##1       | 42/199 [00:00<00:00, 381.53it/s]Loading weights:  48%|####7     | 95/199 [00:00<00:00, 458.78it/s]Loading weights: 100%|##########| 199/199 [00:00<00:00, 684.39it/s]
-2026-09-23 02:09:50,467 INFO HTTP Request: HEAD https://huggingface.co/BAAI/bge-small-en-v1.5/resolve/main/processor_config.json "HTTP/1.1 404 Not Found"
-2026-09-23 02:09:50,787 INFO HTTP Request: HEAD https://huggingface.co/BAAI/bge-small-en-v1.5/resolve/main/preprocessor_config.json "HTTP/1.1 404 Not Found"
-2026-09-23 02:09:51,092 INFO HTTP Request: HEAD https://huggingface.co/BAAI/bge-small-en-v1.5/resolve/main/video_preprocessor_config.json "HTTP/1.1 404 Not Found"
-2026-09-23 02:09:51,401 INFO HTTP Request: HEAD https://huggingface.co/BAAI/bge-small-en-v1.5/resolve/main/preprocessor_config.json "HTTP/1.1 404 Not Found"
-2026-09-23 02:09:51,700 INFO HTTP Request: HEAD https://huggingface.co/BAAI/bge-small-en-v1.5/resolve/main/tokenizer_config.json "HTTP/1.1 307 Temporary Redirect"
-2026-09-23 02:09:51,716 INFO HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/BAAI/bge-small-en-v1.5/5c38ec7c405ec4b44b94cc5a9bb96e735b38267a/tokenizer_config.json?%2FBAAI%2Fbge-small-en-v1.5%2Fresolve%2Fmain%2Ftokenizer_config.json=&etag=%2237fca74771bc76a8e01178ce3a6055a0995f8093%22 "HTTP/1.1 200 OK"
-2026-09-23 02:09:52,013 INFO HTTP Request: HEAD https://huggingface.co/BAAI/bge-small-en-v1.5/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
-2026-09-23 02:09:52,018 INFO HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/BAAI/bge-small-en-v1.5/5c38ec7c405ec4b44b94cc5a9bb96e735b38267a/config.json?%2FBAAI%2Fbge-small-en-v1.5%2Fresolve%2Fmain%2Fconfig.json=&etag=%223992bf890728a92476c700e6e657fd696eb94160%22 "HTTP/1.1 200 OK"
-2026-09-23 02:09:52,274 INFO HTTP Request: HEAD https://huggingface.co/BAAI/bge-small-en-v1.5/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
-2026-09-23 02:09:52,290 INFO HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/BAAI/bge-small-en-v1.5/5c38ec7c405ec4b44b94cc5a9bb96e735b38267a/config.json?%2FBAAI%2Fbge-small-en-v1.5%2Fresolve%2Fmain%2Fconfig.json=&etag=%223992bf890728a92476c700e6e657fd696eb94160%22 "HTTP/1.1 200 OK"
-2026-09-23 02:09:52,619 INFO HTTP Request: HEAD https://huggingface.co/BAAI/bge-small-en-v1.5/resolve/main/tokenizer_config.json "HTTP/1.1 307 Temporary Redirect"
-2026-09-23 02:09:52,633 INFO HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/BAAI/bge-small-en-v1.5/5c38ec7c405ec4b44b94cc5a9bb96e735b38267a/tokenizer_config.json?%2FBAAI%2Fbge-small-en-v1.5%2Fresolve%2Fmain%2Ftokenizer_config.json=&etag=%2237fca74771bc76a8e01178ce3a6055a0995f8093%22 "HTTP/1.1 200 OK"
-2026-09-23 02:09:52,896 INFO HTTP Request: GET https://huggingface.co/api/models/BAAI/bge-small-en-v1.5/tree/main/additional_chat_templates?recursive=false&expand=false "HTTP/1.1 404 Not Found"
-2026-09-23 02:09:53,142 INFO HTTP Request: GET https://huggingface.co/api/models/BAAI/bge-small-en-v1.5/tree/main?recursive=true&expand=false "HTTP/1.1 200 OK"
-2026-09-23 02:09:53,650 INFO HTTP Request: HEAD https://huggingface.co/BAAI/bge-small-en-v1.5/resolve/main/1_Pooling/config.json "HTTP/1.1 307 Temporary Redirect"
-2026-09-23 02:09:53,660 INFO HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/BAAI/bge-small-en-v1.5/5c38ec7c405ec4b44b94cc5a9bb96e735b38267a/1_Pooling%2Fconfig.json?%2FBAAI%2Fbge-small-en-v1.5%2Fresolve%2Fmain%2F1_Pooling%2Fconfig.json=&etag=%221da070f0993788c8851a652170ff013aa54dd519%22 "HTTP/1.1 200 OK"
-2026-09-23 02:09:53,961 INFO HTTP Request: HEAD https://huggingface.co/BAAI/bge-small-en-v1.5/resolve/main/2_Normalize/config.json "HTTP/1.1 404 Not Found"
-2026-09-23 02:09:54,266 INFO HTTP Request: GET https://huggingface.co/api/models/BAAI/bge-small-en-v1.5 "HTTP/1.1 200 OK"
-INFO:     127.0.0.1:58358 - "POST /chat HTTP/1.1" 200 OK
-INFO:     127.0.0.1:54839 - "OPTIONS /chat HTTP/1.1" 200 OK
-2026-09-23 02:10:24,784 INFO HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
-2026-09-23 02:10:24,823 INFO No device provided, using cpu
-2026-09-23 02:10:25,126 INFO HTTP Request: HEAD https://huggingface.co/BAAI/bge-small-en-v1.5/resolve/main/modules.json "HTTP/1.1 307 Temporary Redirect"
-2026-09-23 02:10:25,143 INFO HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/BAAI/bge-small-en-v1.5/5c38ec7c405ec4b44b94cc5a9bb96e735b38267a/modules.json?%2FBAAI%2Fbge-small-en-v1.5%2Fresolve%2Fmain%2Fmodules.json=&etag=%22952a9b81c0bfd99800fabf352f69c7ccd46c5e43%22 "HTTP/1.1 200 OK"
-2026-09-23 02:10:25,400 INFO HTTP Request: HEAD https://huggingface.co/BAAI/bge-small-en-v1.5/resolve/main/config_sentence_transformers.json "HTTP/1.1 307 Temporary Redirect"
-2026-09-23 02:10:25,415 INFO HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/BAAI/bge-small-en-v1.5/5c38ec7c405ec4b44b94cc5a9bb96e735b38267a/config_sentence_transformers.json?%2FBAAI%2Fbge-small-en-v1.5%2Fresolve%2Fmain%2Fconfig_sentence_transformers.json=&etag=%22dcb0c0d97d09b930d13600b1a773ddb27e441aab%22 "HTTP/1.1 200 OK"
-2026-09-23 02:10:25,415 INFO Loading SentenceTransformer model from BAAI/bge-small-en-v1.5.
-2026-09-23 02:10:25,705 INFO HTTP Request: HEAD https://huggingface.co/BAAI/bge-small-en-v1.5/resolve/main/config_sentence_transformers.json "HTTP/1.1 307 Temporary Redirect"
-2026-09-23 02:10:25,721 INFO HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/BAAI/bge-small-en-v1.5/5c38ec7c405ec4b44b94cc5a9bb96e735b38267a/config_sentence_transformers.json?%2FBAAI%2Fbge-small-en-v1.5%2Fresolve%2Fmain%2Fconfig_sentence_transformers.json=&etag=%22dcb0c0d97d09b930d13600b1a773ddb27e441aab%22 "HTTP/1.1 200 OK"
-2026-09-23 02:10:25,954 INFO HTTP Request: HEAD https://huggingface.co/BAAI/bge-small-en-v1.5/resolve/main/README.md "HTTP/1.1 307 Temporary Redirect"
-2026-09-23 02:10:25,962 INFO HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/BAAI/bge-small-en-v1.5/5c38ec7c405ec4b44b94cc5a9bb96e735b38267a/README.md?%2FBAAI%2Fbge-small-en-v1.5%2Fresolve%2Fmain%2FREADME.md=&etag=%228b8567d75ffa619486d9590cb0eb76d66ad46c49%22 "HTTP/1.1 200 OK"
-2026-09-23 02:10:26,199 INFO HTTP Request: HEAD https://huggingface.co/BAAI/bge-small-en-v1.5/resolve/main/modules.json "HTTP/1.1 307 Temporary Redirect"
-2026-09-23 02:10:26,215 INFO HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/BAAI/bge-small-en-v1.5/5c38ec7c405ec4b44b94cc5a9bb96e735b38267a/modules.json?%2FBAAI%2Fbge-small-en-v1.5%2Fresolve%2Fmain%2Fmodules.json=&etag=%22952a9b81c0bfd99800fabf352f69c7ccd46c5e43%22 "HTTP/1.1 200 OK"
-2026-09-23 02:10:26,524 INFO HTTP Request: HEAD https://huggingface.co/BAAI/bge-small-en-v1.5/resolve/main/sentence_bert_config.json "HTTP/1.1 307 Temporary Redirect"
-2026-09-23 02:10:26,547 INFO HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/BAAI/bge-small-en-v1.5/5c38ec7c405ec4b44b94cc5a9bb96e735b38267a/sentence_bert_config.json?%2FBAAI%2Fbge-small-en-v1.5%2Fresolve%2Fmain%2Fsentence_bert_config.json=&etag=%22ea85692bff64b0d1917833c31ddbca8ab10f5455%22 "HTTP/1.1 200 OK"
-2026-09-23 02:10:26,789 INFO HTTP Request: HEAD https://huggingface.co/BAAI/bge-small-en-v1.5/resolve/main/adapter_config.json "HTTP/1.1 404 Not Found"
-2026-09-23 02:10:27,027 INFO HTTP Request: HEAD https://huggingface.co/BAAI/bge-small-en-v1.5/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
-2026-09-23 02:10:27,044 INFO HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/BAAI/bge-small-en-v1.5/5c38ec7c405ec4b44b94cc5a9bb96e735b38267a/config.json?%2FBAAI%2Fbge-small-en-v1.5%2Fresolve%2Fmain%2Fconfig.json=&etag=%223992bf890728a92476c700e6e657fd696eb94160%22 "HTTP/1.1 200 OK"
-Loading weights:   0%|          | 0/199 [00:00<?, ?it/s]Loading weights:  13%|#3        | 26/199 [00:00<00:00, 240.04it/s]Loading weights:  36%|###5      | 71/199 [00:00<00:00, 346.89it/s]Loading weights: 100%|##########| 199/199 [00:00<00:00, 723.42it/s]
-2026-09-23 02:10:27,890 INFO HTTP Request: HEAD https://huggingface.co/BAAI/bge-small-en-v1.5/resolve/main/processor_config.json "HTTP/1.1 404 Not Found"
-2026-09-23 02:10:28,161 INFO HTTP Request: HEAD https://huggingface.co/BAAI/bge-small-en-v1.5/resolve/main/preprocessor_config.json "HTTP/1.1 404 Not Found"
-2026-09-23 02:10:28,468 INFO HTTP Request: HEAD https://huggingface.co/BAAI/bge-small-en-v1.5/resolve/main/video_preprocessor_config.json "HTTP/1.1 404 Not Found"
-2026-09-23 02:10:28,879 INFO HTTP Request: HEAD https://huggingface.co/BAAI/bge-small-en-v1.5/resolve/main/preprocessor_config.json "HTTP/1.1 404 Not Found"
-2026-09-23 02:10:29,185 INFO HTTP Request: HEAD https://huggingface.co/BAAI/bge-small-en-v1.5/resolve/main/tokenizer_config.json "HTTP/1.1 307 Temporary Redirect"
-2026-09-23 02:10:29,185 INFO HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/BAAI/bge-small-en-v1.5/5c38ec7c405ec4b44b94cc5a9bb96e735b38267a/tokenizer_config.json?%2FBAAI%2Fbge-small-en-v1.5%2Fresolve%2Fmain%2Ftokenizer_config.json=&etag=%2237fca74771bc76a8e01178ce3a6055a0995f8093%22 "HTTP/1.1 200 OK"
-2026-09-23 02:10:29,495 INFO HTTP Request: HEAD https://huggingface.co/BAAI/bge-small-en-v1.5/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
-2026-09-23 02:10:29,510 INFO HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/BAAI/bge-small-en-v1.5/5c38ec7c405ec4b44b94cc5a9bb96e735b38267a/config.json?%2FBAAI%2Fbge-small-en-v1.5%2Fresolve%2Fmain%2Fconfig.json=&etag=%223992bf890728a92476c700e6e657fd696eb94160%22 "HTTP/1.1 200 OK"
-2026-09-23 02:10:29,802 INFO HTTP Request: HEAD https://huggingface.co/BAAI/bge-small-en-v1.5/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
-2026-09-23 02:10:29,812 INFO HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/BAAI/bge-small-en-v1.5/5c38ec7c405ec4b44b94cc5a9bb96e735b38267a/config.json?%2FBAAI%2Fbge-small-en-v1.5%2Fresolve%2Fmain%2Fconfig.json=&etag=%223992bf890728a92476c700e6e657fd696eb94160%22 "HTTP/1.1 200 OK"
-2026-09-23 02:10:30,057 INFO HTTP Request: HEAD https://huggingface.co/BAAI/bge-small-en-v1.5/resolve/main/tokenizer_config.json "HTTP/1.1 307 Temporary Redirect"
-2026-09-23 02:10:30,071 INFO HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/BAAI/bge-small-en-v1.5/5c38ec7c405ec4b44b94cc5a9bb96e735b38267a/tokenizer_config.json?%2FBAAI%2Fbge-small-en-v1.5%2Fresolve%2Fmain%2Ftokenizer_config.json=&etag=%2237fca74771bc76a8e01178ce3a6055a0995f8093%22 "HTTP/1.1 200 OK"
-2026-09-23 02:10:30,313 INFO HTTP Request: GET https://huggingface.co/api/models/BAAI/bge-small-en-v1.5/tree/main/additional_chat_templates?recursive=false&expand=false "HTTP/1.1 404 Not Found"
-2026-09-23 02:10:30,618 INFO HTTP Request: GET https://huggingface.co/api/models/BAAI/bge-small-en-v1.5/tree/main?recursive=true&expand=false "HTTP/1.1 200 OK"
-2026-09-23 02:10:30,999 INFO HTTP Request: HEAD https://huggingface.co/BAAI/bge-small-en-v1.5/resolve/main/1_Pooling/config.json "HTTP/1.1 307 Temporary Redirect"
-2026-09-23 02:10:31,013 INFO HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/BAAI/bge-small-en-v1.5/5c38ec7c405ec4b44b94cc5a9bb96e735b38267a/1_Pooling%2Fconfig.json?%2FBAAI%2Fbge-small-en-v1.5%2Fresolve%2Fmain%2F1_Pooling%2Fconfig.json=&etag=%221da070f0993788c8851a652170ff013aa54dd519%22 "HTTP/1.1 200 OK"
-2026-09-23 02:10:31,257 INFO HTTP Request: HEAD https://huggingface.co/BAAI/bge-small-en-v1.5/resolve/main/2_Normalize/config.json "HTTP/1.1 404 Not Found"
-2026-09-23 02:10:31,542 INFO HTTP Request: GET https://huggingface.co/api/models/BAAI/bge-small-en-v1.5 "HTTP/1.1 200 OK"
-2026-09-23 02:10:34,040 INFO HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
-INFO:     127.0.0.1:54839 - "POST /chat HTTP/1.1" 200 OK
-2026-09-23 02:11:45,995 INFO HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
-INFO:     127.0.0.1:49782 - "POST /chat HTTP/1.1" 200 OK
-2026-09-23 02:12:01,409 INFO SEMANTIC CACHE HIT (similarity=0.9502) matched question: "What's the churn risk for customer 7590-VHVEG?"
-INFO:     127.0.0.1:49785 - "POST /chat HTTP/1.1" 200 OK
-2026-09-23 02:12:35,092 INFO HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
-2026-09-23 02:12:37,345 INFO Cache HIT for 7590-VHVEG
-INFO:     127.0.0.1:56885 - "POST /predict HTTP/1.1" 200 OK
-2026-09-23 02:12:38,892 INFO HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
-INFO:     127.0.0.1:50617 - "POST /chat HTTP/1.1" 200 OK
-2026-09-23 02:13:34,060 INFO HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
-2026-09-23 02:13:37,126 INFO HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
-INFO:     127.0.0.1:55357 - "POST /chat HTTP/1.1" 200 OK
-WARNING:  WatchFiles detected changes in 'src\pipelines\build_features.py'. Reloading...
- 
+INFO:     127.0.0.1:58226 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58109 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60126 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62401 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62401 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62401 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62402 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62402 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62402 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62411 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62411 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62414 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62414 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62414 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62415 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62415 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62415 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62415 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62415 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62415 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62415 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62415 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62415 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62415 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64206 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64206 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64206 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64206 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64206 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59826 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59826 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59826 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59826 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59826 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50061 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50061 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50061 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55637 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55637 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55637 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55637 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56514 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56514 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54876 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54876 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54876 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54876 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53625 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53625 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52689 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52689 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52689 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52689 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61961 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61961 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61961 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61961 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61961 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54421 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54421 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54421 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54421 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54421 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54421 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54421 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54421 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54421 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53403 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53404 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53404 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53404 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53404 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53404 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53404 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53404 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53404 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53404 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53404 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53404 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53404 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53404 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53404 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53404 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53404 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53404 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53404 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58294 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58294 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58294 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58294 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58294 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58294 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55929 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55929 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55929 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55929 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51944 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51944 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51944 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51948 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51948 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51949 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65065 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65065 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65065 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57637 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57637 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57637 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57639 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57639 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57639 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60318 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60318 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60318 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60318 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60318 - "GET /metrics HTTP/1.1" 200 OK
+2026-09-23 23:22:13,578 INFO Cache MISS for 9134-WYRVP
+INFO:     127.0.0.1:50509 - "POST /predict HTTP/1.1" 200 OK
+2026-09-23 23:22:15,028 INFO Cache MISS for 0823-HSCDJ
+INFO:     127.0.0.1:52925 - "POST /predict HTTP/1.1" 200 OK
+2026-09-23 23:22:15,325 INFO Cache MISS for 4132-POCZS
+INFO:     127.0.0.1:52927 - "POST /predict HTTP/1.1" 200 OK
+2026-09-23 23:22:15,612 INFO Cache MISS for 4929-BSTRX
+INFO:     127.0.0.1:52929 - "POST /predict HTTP/1.1" 200 OK
+2026-09-23 23:22:15,898 INFO Cache MISS for 3976-HXHCE
+INFO:     127.0.0.1:52931 - "POST /predict HTTP/1.1" 200 OK
+2026-09-23 23:22:16,172 INFO Cache HIT for 9134-WYRVP
+INFO:     127.0.0.1:52933 - "POST /predict HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60318 - "GET /metrics HTTP/1.1" 200 OK
+2026-09-23 23:22:16,448 INFO Cache HIT for 0823-HSCDJ
+INFO:     127.0.0.1:52935 - "POST /predict HTTP/1.1" 200 OK
+2026-09-23 23:22:16,728 INFO Cache HIT for 4132-POCZS
+INFO:     127.0.0.1:52937 - "POST /predict HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60318 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60318 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60318 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60318 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54569 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54569 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54569 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54569 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54569 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54569 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54569 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54569 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54569 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61540 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61540 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61541 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61541 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61541 - "GET /metrics HTTP/1.1" 200 OK
+2026-09-23 23:23:51,133 INFO No device provided, using cpu
+INFO:     127.0.0.1:61541 - "GET /metrics HTTP/1.1" 200 OK
+2026-09-23 23:23:51,886 INFO HTTP Request: HEAD https://huggingface.co/BAAI/bge-small-en-v1.5/resolve/main/modules.json "HTTP/1.1 307 Temporary Redirect"
+2026-09-23 23:23:51,899 INFO HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/BAAI/bge-small-en-v1.5/5c38ec7c405ec4b44b94cc5a9bb96e735b38267a/modules.json?%2FBAAI%2Fbge-small-en-v1.5%2Fresolve%2Fmain%2Fmodules.json=&etag=%22952a9b81c0bfd99800fabf352f69c7ccd46c5e43%22 "HTTP/1.1 200 OK"
+2026-09-23 23:23:52,173 INFO HTTP Request: HEAD https://huggingface.co/BAAI/bge-small-en-v1.5/resolve/main/config_sentence_transformers.json "HTTP/1.1 307 Temporary Redirect"
+2026-09-23 23:23:52,180 INFO HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/BAAI/bge-small-en-v1.5/5c38ec7c405ec4b44b94cc5a9bb96e735b38267a/config_sentence_transformers.json?%2FBAAI%2Fbge-small-en-v1.5%2Fresolve%2Fmain%2Fconfig_sentence_transformers.json=&etag=%22dcb0c0d97d09b930d13600b1a773ddb27e441aab%22 "HTTP/1.1 200 OK"
+2026-09-23 23:23:52,180 INFO Loading SentenceTransformer model from BAAI/bge-small-en-v1.5.
+2026-09-23 23:23:52,416 INFO HTTP Request: HEAD https://huggingface.co/BAAI/bge-small-en-v1.5/resolve/main/config_sentence_transformers.json "HTTP/1.1 307 Temporary Redirect"
+2026-09-23 23:23:52,432 INFO HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/BAAI/bge-small-en-v1.5/5c38ec7c405ec4b44b94cc5a9bb96e735b38267a/config_sentence_transformers.json?%2FBAAI%2Fbge-small-en-v1.5%2Fresolve%2Fmain%2Fconfig_sentence_transformers.json=&etag=%22dcb0c0d97d09b930d13600b1a773ddb27e441aab%22 "HTTP/1.1 200 OK"
+2026-09-23 23:23:52,663 INFO HTTP Request: HEAD https://huggingface.co/BAAI/bge-small-en-v1.5/resolve/main/README.md "HTTP/1.1 307 Temporary Redirect"
+2026-09-23 23:23:52,678 INFO HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/BAAI/bge-small-en-v1.5/5c38ec7c405ec4b44b94cc5a9bb96e735b38267a/README.md?%2FBAAI%2Fbge-small-en-v1.5%2Fresolve%2Fmain%2FREADME.md=&etag=%228b8567d75ffa619486d9590cb0eb76d66ad46c49%22 "HTTP/1.1 200 OK"
+2026-09-23 23:23:52,950 INFO HTTP Request: HEAD https://huggingface.co/BAAI/bge-small-en-v1.5/resolve/main/modules.json "HTTP/1.1 307 Temporary Redirect"
+2026-09-23 23:23:52,961 INFO HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/BAAI/bge-small-en-v1.5/5c38ec7c405ec4b44b94cc5a9bb96e735b38267a/modules.json?%2FBAAI%2Fbge-small-en-v1.5%2Fresolve%2Fmain%2Fmodules.json=&etag=%22952a9b81c0bfd99800fabf352f69c7ccd46c5e43%22 "HTTP/1.1 200 OK"
+2026-09-23 23:23:53,209 INFO HTTP Request: HEAD https://huggingface.co/BAAI/bge-small-en-v1.5/resolve/main/sentence_bert_config.json "HTTP/1.1 307 Temporary Redirect"
+2026-09-23 23:23:53,225 INFO HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/BAAI/bge-small-en-v1.5/5c38ec7c405ec4b44b94cc5a9bb96e735b38267a/sentence_bert_config.json?%2FBAAI%2Fbge-small-en-v1.5%2Fresolve%2Fmain%2Fsentence_bert_config.json=&etag=%22ea85692bff64b0d1917833c31ddbca8ab10f5455%22 "HTTP/1.1 200 OK"
+2026-09-23 23:23:53,484 INFO HTTP Request: HEAD https://huggingface.co/BAAI/bge-small-en-v1.5/resolve/main/adapter_config.json "HTTP/1.1 404 Not Found"
+2026-09-23 23:23:53,743 INFO HTTP Request: HEAD https://huggingface.co/BAAI/bge-small-en-v1.5/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-09-23 23:23:53,749 INFO HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/BAAI/bge-small-en-v1.5/5c38ec7c405ec4b44b94cc5a9bb96e735b38267a/config.json?%2FBAAI%2Fbge-small-en-v1.5%2Fresolve%2Fmain%2Fconfig.json=&etag=%223992bf890728a92476c700e6e657fd696eb94160%22 "HTTP/1.1 200 OK"
+Loading weights:   0%|          | 0/199 [00:00<?, ?it/s]Loading weights:  27%|##7       | 54/199 [00:00<00:00, 509.30it/s]Loading weights:  53%|#####2    | 105/199 [00:00<00:00, 483.25it/s]Loading weights: 100%|##########| 199/199 [00:00<00:00, 907.59it/s]
+2026-09-23 23:23:54,746 INFO HTTP Request: HEAD https://huggingface.co/BAAI/bge-small-en-v1.5/resolve/main/processor_config.json "HTTP/1.1 404 Not Found"
+2026-09-23 23:23:55,018 INFO HTTP Request: HEAD https://huggingface.co/BAAI/bge-small-en-v1.5/resolve/main/preprocessor_config.json "HTTP/1.1 404 Not Found"
+2026-09-23 23:23:55,262 INFO HTTP Request: HEAD https://huggingface.co/BAAI/bge-small-en-v1.5/resolve/main/video_preprocessor_config.json "HTTP/1.1 404 Not Found"
+2026-09-23 23:23:55,512 INFO HTTP Request: HEAD https://huggingface.co/BAAI/bge-small-en-v1.5/resolve/main/preprocessor_config.json "HTTP/1.1 404 Not Found"
+2026-09-23 23:23:55,761 INFO HTTP Request: HEAD https://huggingface.co/BAAI/bge-small-en-v1.5/resolve/main/tokenizer_config.json "HTTP/1.1 307 Temporary Redirect"
+2026-09-23 23:23:55,773 INFO HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/BAAI/bge-small-en-v1.5/5c38ec7c405ec4b44b94cc5a9bb96e735b38267a/tokenizer_config.json?%2FBAAI%2Fbge-small-en-v1.5%2Fresolve%2Fmain%2Ftokenizer_config.json=&etag=%2237fca74771bc76a8e01178ce3a6055a0995f8093%22 "HTTP/1.1 200 OK"
+2026-09-23 23:23:56,029 INFO HTTP Request: HEAD https://huggingface.co/BAAI/bge-small-en-v1.5/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-09-23 23:23:56,041 INFO HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/BAAI/bge-small-en-v1.5/5c38ec7c405ec4b44b94cc5a9bb96e735b38267a/config.json?%2FBAAI%2Fbge-small-en-v1.5%2Fresolve%2Fmain%2Fconfig.json=&etag=%223992bf890728a92476c700e6e657fd696eb94160%22 "HTTP/1.1 200 OK"
+INFO:     127.0.0.1:61541 - "GET /metrics HTTP/1.1" 200 OK
+2026-09-23 23:23:56,296 INFO HTTP Request: HEAD https://huggingface.co/BAAI/bge-small-en-v1.5/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-09-23 23:23:56,299 INFO HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/BAAI/bge-small-en-v1.5/5c38ec7c405ec4b44b94cc5a9bb96e735b38267a/config.json?%2FBAAI%2Fbge-small-en-v1.5%2Fresolve%2Fmain%2Fconfig.json=&etag=%223992bf890728a92476c700e6e657fd696eb94160%22 "HTTP/1.1 200 OK"
+2026-09-23 23:23:56,552 INFO HTTP Request: HEAD https://huggingface.co/BAAI/bge-small-en-v1.5/resolve/main/tokenizer_config.json "HTTP/1.1 307 Temporary Redirect"
+2026-09-23 23:23:56,571 INFO HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/BAAI/bge-small-en-v1.5/5c38ec7c405ec4b44b94cc5a9bb96e735b38267a/tokenizer_config.json?%2FBAAI%2Fbge-small-en-v1.5%2Fresolve%2Fmain%2Ftokenizer_config.json=&etag=%2237fca74771bc76a8e01178ce3a6055a0995f8093%22 "HTTP/1.1 200 OK"
+2026-09-23 23:23:56,841 INFO HTTP Request: GET https://huggingface.co/api/models/BAAI/bge-small-en-v1.5/tree/main/additional_chat_templates?recursive=false&expand=false "HTTP/1.1 404 Not Found"
+2026-09-23 23:23:57,083 INFO HTTP Request: GET https://huggingface.co/api/models/BAAI/bge-small-en-v1.5/tree/main?recursive=true&expand=false "HTTP/1.1 200 OK"
+2026-09-23 23:23:57,455 INFO HTTP Request: HEAD https://huggingface.co/BAAI/bge-small-en-v1.5/resolve/main/1_Pooling/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-09-23 23:23:57,474 INFO HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/BAAI/bge-small-en-v1.5/5c38ec7c405ec4b44b94cc5a9bb96e735b38267a/1_Pooling%2Fconfig.json?%2FBAAI%2Fbge-small-en-v1.5%2Fresolve%2Fmain%2F1_Pooling%2Fconfig.json=&etag=%221da070f0993788c8851a652170ff013aa54dd519%22 "HTTP/1.1 200 OK"
+2026-09-23 23:23:57,900 INFO HTTP Request: HEAD https://huggingface.co/BAAI/bge-small-en-v1.5/resolve/main/2_Normalize/config.json "HTTP/1.1 404 Not Found"
+2026-09-23 23:23:58,306 INFO HTTP Request: GET https://huggingface.co/api/models/BAAI/bge-small-en-v1.5 "HTTP/1.1 200 OK"
+2026-09-23 23:23:59,688 INFO HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-09-23 23:24:00,556 INFO HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+INFO:     127.0.0.1:54572 - "POST /chat HTTP/1.1" 200 OK
+2026-09-23 23:24:00,941 INFO SEMANTIC CACHE HIT (similarity=0.9448) matched question: 'What contract type has the highest churn rate?'
+INFO:     127.0.0.1:55384 - "POST /chat HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61541 - "GET /metrics HTTP/1.1" 200 OK
+2026-09-23 23:24:01,741 INFO HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-09-23 23:24:02,303 INFO HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+INFO:     127.0.0.1:55388 - "POST /chat HTTP/1.1" 200 OK
+2026-09-23 23:24:03,287 INFO HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-09-23 23:24:03,517 INFO HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+INFO:     127.0.0.1:55391 - "POST /chat HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61541 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61541 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61541 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55400 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55403 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55400 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55400 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55400 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53772 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53772 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53772 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53772 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53772 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53772 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53772 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53772 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53772 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50141 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50141 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50141 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50141 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50141 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50141 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50141 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50141 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50141 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62736 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62736 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62736 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62736 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62736 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62736 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56393 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56395 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56395 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55296 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55296 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55296 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55296 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55296 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55296 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55296 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55296 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55296 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55296 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55296 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55296 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55296 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55296 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51157 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51157 - "GET /metrics HTTP/1.1" 200 OK

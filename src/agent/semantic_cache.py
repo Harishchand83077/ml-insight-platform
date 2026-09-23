@@ -25,6 +25,7 @@ import logging
 import numpy as np
 import redis
 from langchain_huggingface import HuggingFaceEmbeddings
+from prometheus_client import Counter
 
 logger = logging.getLogger("semantic_cache")
 
@@ -34,6 +35,11 @@ CACHE_KEY = "semantic_cache"
 MAX_ENTRIES = 200
 SIMILARITY_THRESHOLD = 0.90
 EMBEDDING_MODEL = "BAAI/bge-small-en-v1.5"  # must match src/agent/tools.py
+
+SEMANTIC_CACHE_HIT_COUNTER = Counter(
+    "semantic_cache_hits_total",
+    "Agent /chat requests answered from the semantic cache instead of a real agent call",
+)
 
 _redis_client = None
 _embeddings = None
@@ -82,6 +88,7 @@ def check_semantic_cache(question):
             best_score,
             best_entry["question"],
         )
+        SEMANTIC_CACHE_HIT_COUNTER.inc()
         return {"response": best_entry["response"], "tool_calls": best_entry["tool_calls"]}
 
     return None

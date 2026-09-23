@@ -1,0 +1,105 @@
+{
+  "dashboard": {
+    "id": null,
+    "uid": "ml-insight-api",
+    "title": "ML Insight API",
+    "timezone": "browser",
+    "schemaVersion": 39,
+    "version": 1,
+    "refresh": "5s",
+    "time": { "from": "now-30m", "to": "now" },
+    "panels": [
+      {
+        "id": 1,
+        "title": "Request Rate (by endpoint)",
+        "type": "timeseries",
+        "gridPos": { "x": 0, "y": 0, "w": 12, "h": 8 },
+        "datasource": { "type": "prometheus", "uid": "bfz56h7kpeiv4c" },
+        "fieldConfig": { "defaults": { "unit": "reqps" }, "overrides": [] },
+        "targets": [
+          {
+            "expr": "sum(rate(http_requests_total[1m])) by (handler)",
+            "legendFormat": "{{handler}}",
+            "datasource": { "type": "prometheus", "uid": "bfz56h7kpeiv4c" }
+          }
+        ]
+      },
+      {
+        "id": 2,
+        "title": "HTTP Latency (p50 / p95)",
+        "type": "timeseries",
+        "gridPos": { "x": 12, "y": 0, "w": 12, "h": 8 },
+        "datasource": { "type": "prometheus", "uid": "bfz56h7kpeiv4c" },
+        "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.50, sum(rate(http_request_duration_seconds_bucket[5m])) by (le))",
+            "legendFormat": "p50",
+            "datasource": { "type": "prometheus", "uid": "bfz56h7kpeiv4c" }
+          },
+          {
+            "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (le))",
+            "legendFormat": "p95",
+            "datasource": { "type": "prometheus", "uid": "bfz56h7kpeiv4c" }
+          }
+        ]
+      },
+      {
+        "id": 3,
+        "title": "Feature Cache Hit Rate",
+        "type": "timeseries",
+        "gridPos": { "x": 0, "y": 8, "w": 12, "h": 8 },
+        "datasource": { "type": "prometheus", "uid": "bfz56h7kpeiv4c" },
+        "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "max": 100 }, "overrides": [] },
+        "targets": [
+          {
+            "expr": "100 * sum(rate(feature_cache_requests_total{result=\"hit\"}[5m])) / sum(rate(feature_cache_requests_total[5m]))",
+            "legendFormat": "hit rate %",
+            "datasource": { "type": "prometheus", "uid": "bfz56h7kpeiv4c" }
+          }
+        ]
+      },
+      {
+        "id": 4,
+        "title": "Semantic Cache Hits (rate)",
+        "type": "timeseries",
+        "gridPos": { "x": 12, "y": 8, "w": 12, "h": 8 },
+        "datasource": { "type": "prometheus", "uid": "bfz56h7kpeiv4c" },
+        "fieldConfig": { "defaults": { "unit": "ops" }, "overrides": [] },
+        "targets": [
+          {
+            "expr": "rate(semantic_cache_hits_total[5m])",
+            "legendFormat": "semantic cache hits/sec",
+            "datasource": { "type": "prometheus", "uid": "bfz56h7kpeiv4c" }
+          }
+        ]
+      },
+      {
+        "id": 5,
+        "title": "Agent Response Time Distribution (p50 / p95 / p99)",
+        "type": "timeseries",
+        "gridPos": { "x": 0, "y": 16, "w": 24, "h": 8 },
+        "datasource": { "type": "prometheus", "uid": "bfz56h7kpeiv4c" },
+        "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.50, sum(rate(agent_response_seconds_bucket[5m])) by (le))",
+            "legendFormat": "p50",
+            "datasource": { "type": "prometheus", "uid": "bfz56h7kpeiv4c" }
+          },
+          {
+            "expr": "histogram_quantile(0.95, sum(rate(agent_response_seconds_bucket[5m])) by (le))",
+            "legendFormat": "p95",
+            "datasource": { "type": "prometheus", "uid": "bfz56h7kpeiv4c" }
+          },
+          {
+            "expr": "histogram_quantile(0.99, sum(rate(agent_response_seconds_bucket[5m])) by (le))",
+            "legendFormat": "p99",
+            "datasource": { "type": "prometheus", "uid": "bfz56h7kpeiv4c" }
+          }
+        ]
+      }
+    ]
+  },
+  "overwrite": true
+}
