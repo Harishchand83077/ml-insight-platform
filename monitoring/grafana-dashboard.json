@@ -61,15 +61,15 @@
       },
       {
         "id": 4,
-        "title": "Semantic Cache Hits (rate)",
+        "title": "Semantic Cache Hit Rate",
         "type": "timeseries",
         "gridPos": { "x": 12, "y": 8, "w": 12, "h": 8 },
         "datasource": { "type": "prometheus", "uid": "bfz56h7kpeiv4c" },
-        "fieldConfig": { "defaults": { "unit": "ops" }, "overrides": [] },
+        "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "max": 100 }, "overrides": [] },
         "targets": [
           {
-            "expr": "rate(semantic_cache_hits_total[5m])",
-            "legendFormat": "semantic cache hits/sec",
+            "expr": "100 * sum(rate(semantic_cache_hits_total[5m])) / (sum(rate(semantic_cache_hits_total[5m])) + sum(rate(semantic_cache_misses_total[5m])))",
+            "legendFormat": "hit rate %",
             "datasource": { "type": "prometheus", "uid": "bfz56h7kpeiv4c" }
           }
         ]

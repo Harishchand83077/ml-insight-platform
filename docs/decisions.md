@@ -293,3 +293,29 @@
   volumes intact) before proceeding.
   
 
+## Monitoring (Week 7 close)
+
+- Prometheus + Grafana: automatic HTTP metrics (via 
+  prometheus-fastapi-instrumentator) plus 3 custom metrics placed at 
+  their true source (not endpoint handlers) — feature cache hit/miss, 
+  semantic cache hit rate, agent response time (isolated from raw HTTP 
+  latency, excludes cache-hit shortcuts).
+- Measured agent latency: p50 ~1.4s, p95/p99 ~2.5s — real Groq round-trip 
+  variance, not application overhead.
+- Distinction from Evidently: Prometheus/Grafana = system health (is 
+  the service fast/up), Evidently = model health (is the data still 
+  valid) — two different monitoring questions, two different tools.
+
+## Load testing (Week 8 start)
+
+- Locust: 20 users, 2min, 60/40 /predict-/chat split. Found two real 
+  issues: (1) /chat 46.75% failures under load — Groq free-tier rate 
+  limit propagating as unhandled 500s, no graceful degradation; 
+  (2) /predict 0% failures but p99=11s despite p50=33ms — classic 
+  queuing signature from POOL_MAX_CONN=5 exhaustion under concurrent load.
+- Fixed: wrapped agent invocation in try/except returning 503 on 
+  rate-limit; raised connection pool size. Re-tested: [fill in new 
+  numbers after re-run].
+- Semantic + feature caches both climbed to 80-90% hit rate under load, 
+  measurably absorbing pressure that would otherwise hit Groq/Postgres 
+  directly.

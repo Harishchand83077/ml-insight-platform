@@ -40,6 +40,11 @@ SEMANTIC_CACHE_HIT_COUNTER = Counter(
     "semantic_cache_hits_total",
     "Agent /chat requests answered from the semantic cache instead of a real agent call",
 )
+SEMANTIC_CACHE_MISS_COUNTER = Counter(
+    "semantic_cache_misses_total",
+    "First-message /chat requests that did not match anything in the semantic cache "
+    "(empty cache, or best match below the similarity threshold)",
+)
 
 _redis_client = None
 _embeddings = None
@@ -69,6 +74,7 @@ def check_semantic_cache(question):
     similarity threshold, else None."""
     raw_entries = _get_redis_client().lrange(CACHE_KEY, 0, -1)
     if not raw_entries:
+        SEMANTIC_CACHE_MISS_COUNTER.inc()
         return None
 
     query_embedding = _get_embeddings().embed_query(question)
@@ -91,6 +97,7 @@ def check_semantic_cache(question):
         SEMANTIC_CACHE_HIT_COUNTER.inc()
         return {"response": best_entry["response"], "tool_calls": best_entry["tool_calls"]}
 
+    SEMANTIC_CACHE_MISS_COUNTER.inc()
     return None
 
 
