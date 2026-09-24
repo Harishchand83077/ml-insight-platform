@@ -32,6 +32,10 @@ RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTr
 ENV HF_HUB_OFFLINE=1
 
 COPY src/ src/
+# The trained model, exported from the MLflow tracking store to a plain
+# local model directory by scripts/export_model_for_deployment.py - the
+# tracking store itself (mlruns.db/mlruns/) is dev-only and never shipped.
+COPY models/production_model/ models/production_model/
 
 EXPOSE 8000
 

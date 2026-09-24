@@ -30,7 +30,7 @@ from pydantic import BaseModel
 
 from src.agent.agent import agent as churn_agent
 from src.agent.semantic_cache import check_semantic_cache, store_in_semantic_cache
-from src.models.train_baseline import EXPERIMENT_NAME, MLFLOW_TRACKING_URI, prepare_model_input
+from src.models.train_baseline import prepare_model_input
 from src.serving.feature_cache import get_customer_features
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -39,31 +39,25 @@ logger = logging.getLogger("api")
 model_state = {}
 
 
-def load_latest_xgboost_pipeline():
-    mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
-    client = mlflow.tracking.MlflowClient()
-    experiment = client.get_experiment_by_name(EXPERIMENT_NAME)
-    if experiment is None:
-        raise RuntimeError(f"MLflow experiment '{EXPERIMENT_NAME}' not found")
+PRODUCTION_MODEL_DIR = "models/production_model"
 
-    runs = client.search_runs(
-        [experiment.experiment_id],
-        filter_string="tags.mlflow.runName = 'xgboost'",
-        order_by=["start_time DESC"],
-        max_results=1,
-    )
-    if not runs:
-        raise RuntimeError(f"No 'xgboost' run found in MLflow experiment '{EXPERIMENT_NAME}'")
 
-    run_id = runs[0].info.run_id
-    pipeline = mlflow.sklearn.load_model(f"runs:/{run_id}/model")
-    logger.info("Loaded xgboost model from run %s", run_id)
-    return pipeline, run_id
+def load_production_model():
+    """Loads the XGBoost pipeline directly from models/production_model/ -
+    a plain local MLflow model directory produced by
+    scripts/export_model_for_deployment.py - instead of querying the
+    MLflow tracking store (sqlite:///mlruns.db) at startup. That store is
+    dev-time experiment history and isn't shipped with the deployed image;
+    to ship a new model, re-run the export script and commit the updated
+    models/production_model/."""
+    pipeline = mlflow.sklearn.load_model(PRODUCTION_MODEL_DIR)
+    logger.info("Loaded xgboost model from %s", PRODUCTION_MODEL_DIR)
+    return pipeline
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    model_state["pipeline"], model_state["run_id"] = load_latest_xgboost_pipeline()
+    model_state["pipeline"] = load_production_model()
     yield
     model_state.clear()
 

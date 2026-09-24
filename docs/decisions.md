@@ -359,4 +359,38 @@
   deployment risk (Render's free tier also cold-starts); fix is to bake 
   the embedding model into the Docker image at build time rather than 
   pulling it at first runtime use.
-  
+
+
+  ## Render deployment prep (Week 8)
+
+- Dockerfile pre-downloads BAAI/bge-small-en-v1.5 at build time + sets 
+  HF_HUB_OFFLINE=1, eliminating both the cold-load AND any runtime 
+  network check against HuggingFace Hub — fixes the multi-minute 
+  first-request stall found during Upstash migration.
+- CORS uses allow_origin_regex scoped to *.vercel.app rather than a 
+  bare wildcard — with allow_credentials=True, browsers reject a 
+  literal "*" anyway, so a scoped regex is both more correct and more 
+  secure.
+- render.yaml declares secrets as sync: false (no values committed) — 
+  set directly in Render's dashboard.
+  ## Render + Supabase IPv6 issue (Week 8)
+
+- Direct Supabase connection (db.xxx.supabase.co) resolves IPv6-only; 
+  Render's free tier has no outbound IPv6 support, causing "Network is 
+  unreachable" at container startup. Fixed by switching to Supabase's 
+  Session Pooler connection string (IPv4-compatible, via Supavisor) — 
+  no code changes needed, only the connection string.
+
+
+  ## Model export for deployment (Week 8)
+
+- Found: deployed API tried to load models from MLflow's tracking store 
+  (sqlite:///mlruns.db), which only existed locally, never shipped to 
+  Render. Fixed by exporting the chosen production run as a standalone 
+  model directory (models/production_model/), committed to git and 
+  baked into the Docker image — decoupling "what ships" from "the full 
+  experiment tracking history."
+- Stopped tracking mlruns.db/mlruns/ in git — these are local 
+  development artifacts (every experiment run, not just the deployed 
+  one), not deployment artifacts. Only the exported production model 
+  belongs in the repo/image.
