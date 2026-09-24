@@ -334,3 +334,29 @@
   bottleneck. Not fixed — noted as the natural next constraint a 
   production deployment (multi-worker uvicorn/gunicorn) would need to 
   address, out of scope for this load-testing pass.
+
+  ## Supabase migration (Week 8)
+
+- Migrated customers + customer_features only (not raw event tables — 
+  deployed app only queries customer_features; event tables already 
+  did their job locally).
+- Centralized load_dotenv() in db.py so all callers get env vars 
+  automatically, fixing a silent gap where migrate script couldn't 
+  see SUPABASE_DB_URL.
+- Verified: 7043/7043 rows matched exactly on both tables.
+
+## Upstash migration (Week 8)
+
+- Centralized Redis connection in redis_client.py; rediss:// URL 
+  auto-configures TLS via redis-py's from_url() — verified from source, 
+  not assumed.
+- Latency shift confirmed as expected: local hits 2-5ms → Upstash 
+  ~28-32ms (network round-trip), still well under Postgres miss latency 
+  (~71-78ms). Caching logic unchanged — only connection config differed.
+- Found: first /chat call after a fresh process start took several 
+  minutes — sentence-transformers model cold-loading, likely a slow 
+  HuggingFace Hub connectivity check on first use. Flagged as a real 
+  deployment risk (Render's free tier also cold-starts); fix is to bake 
+  the embedding model into the Docker image at build time rather than 
+  pulling it at first runtime use.
+  

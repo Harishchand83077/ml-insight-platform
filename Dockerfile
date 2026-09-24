@@ -20,8 +20,23 @@ RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/wh
 COPY requirements-docker.txt .
 RUN pip install --no-cache-dir -r requirements-docker.txt
 
+# Pre-download and cache the RAG/semantic-cache embedding model at build
+# time, not on the container's first real request. We measured this cause
+# a multi-minute stall on a fresh process in production-like testing:
+# sentence-transformers checks the HuggingFace Hub for the latest model
+# revision even when a local cache exists, unless told not to. HF_HUB_OFFLINE
+# (set only after the download, so the download itself can still reach the
+# Hub) stops the running container from ever making that check again once
+# the model is already baked into this layer.
+RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('BAAI/bge-small-en-v1.5')"
+ENV HF_HUB_OFFLINE=1
+
 COPY src/ src/
 
 EXPOSE 8000
 
-CMD ["uvicorn", "src.serving.api:app", "--host", "0.0.0.0", "--port", "8000"]
+# Render (and most PaaS Docker hosts) require the app to bind to the $PORT
+# they inject, not a fixed port - falls back to 8000 for local `docker run`
+# where $PORT isn't set. Shell-form CMD (not exec-form) so ${PORT:-8000}
+# actually gets substituted.
+CMD uvicorn src.serving.api:app --host 0.0.0.0 --port ${PORT:-8000}

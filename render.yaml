@@ -1,0 +1,22 @@
+# Render Blueprint (Infrastructure as Code) for the FastAPI serving app.
+# https://render.com/docs/blueprint-spec
+#
+# Secrets (SUPABASE_DB_URL, REDIS_URL, GROQ_API_KEY) are intentionally NOT
+# given a `value:` here - `sync: false` means Render prompts for them once
+# in the dashboard when the service is first created, and stores them there
+# only. Nothing secret is committed to this file or anywhere else in the repo.
+services:
+  - type: web
+    name: ml-insight-api
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: SUPABASE_DB_URL
+        sync: false
+      - key: REDIS_URL
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false

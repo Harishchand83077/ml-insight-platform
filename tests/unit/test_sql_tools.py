@@ -2,8 +2,9 @@
 Unit tests for the column-allowlist defense in src/agent/tools.py's
 DB-backed tools (get_churn_rate_by_column, get_customer_count). No
 database connection is made or needed: for a rejected (disallowed)
-column, psycopg2.connect is patched to raise AssertionError, so the test
-fails loudly if validation ever falls through to a real DB call.
+column, connect_local (src/common/db.py) is patched to raise
+AssertionError, so the test fails loudly if validation ever falls
+through to a real DB call.
 """
 
 from unittest.mock import patch
@@ -16,11 +17,11 @@ INJECTION_ATTEMPT = "DROP TABLE customers; --"
 
 
 def _never_connect():
-    return patch("src.agent.tools.psycopg2.connect", side_effect=AssertionError("must not touch the DB"))
+    return patch("src.agent.tools.connect_local", side_effect=AssertionError("must not touch the DB"))
 
 
 def _connect_reaches_here():
-    return patch("src.agent.tools.psycopg2.connect", side_effect=RuntimeError("reached DB call"))
+    return patch("src.agent.tools.connect_local", side_effect=RuntimeError("reached DB call"))
 
 
 class TestGetChurnRateByColumnAllowlist:

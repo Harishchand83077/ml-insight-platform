@@ -23,14 +23,27 @@ import json
 import logging
 
 import numpy as np
-import redis
 from langchain_huggingface import HuggingFaceEmbeddings
 from prometheus_client import Counter
 
+# Absolute import when loaded as part of the src package; src.common isn't
+# a sibling of this file, so the fallback explicitly puts the project root
+# on sys.path first - needed when this file's own directory is
+# run/imported directly. Aliased to _get_redis_client (not get_redis_client)
+# to match this module's existing private-helper naming and so
+# tests/unit/test_semantic_cache.py's patch.object(semantic_cache,
+# "_get_redis_client", ...) keeps working unchanged.
+try:
+    from src.common.redis_client import get_redis_client as _get_redis_client
+except ImportError:
+    import sys
+    from pathlib import Path
+
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
+    from src.common.redis_client import get_redis_client as _get_redis_client
+
 logger = logging.getLogger("semantic_cache")
 
-REDIS_HOST = "localhost"
-REDIS_PORT = 6379
 CACHE_KEY = "semantic_cache"
 MAX_ENTRIES = 200
 SIMILARITY_THRESHOLD = 0.90
@@ -46,15 +59,7 @@ SEMANTIC_CACHE_MISS_COUNTER = Counter(
     "(empty cache, or best match below the similarity threshold)",
 )
 
-_redis_client = None
 _embeddings = None
-
-
-def _get_redis_client():
-    global _redis_client
-    if _redis_client is None:
-        _redis_client = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, decode_responses=True)
-    return _redis_client
 
 
 def _get_embeddings():

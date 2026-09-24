@@ -7,23 +7,28 @@ result in Redis with a 300s TTL, then return it.
 
 import json
 import logging
-import os
 
 import psycopg2.extras
 import psycopg2.pool
-import redis
 from prometheus_client import Counter
 
-PG_DSN = {
-    "host": os.environ.get("PG_HOST", "localhost"),
-    "port": os.environ.get("PG_PORT", "5432"),
-    "dbname": os.environ.get("PG_DATABASE", "ml_insight"),
-    "user": os.environ.get("PG_USER", "postgres"),
-    "password": os.environ.get("PG_PASSWORD", "devpassword"),
-}
+# Absolute import when loaded as part of the src package (e.g. by
+# src/serving/api.py); src.common isn't a sibling of this file, so the
+# fallback explicitly puts the project root on sys.path first - needed
+# when this file's own directory is run/imported directly (e.g.
+# `python src/serving/test_cache.py`, which does `from feature_cache
+# import ...` and never puts the project root on sys.path itself).
+try:
+    from src.common.db import get_database_url
+    from src.common.redis_client import get_redis_client
+except ImportError:
+    import sys
+    from pathlib import Path
 
-REDIS_HOST = os.environ.get("REDIS_HOST", "localhost")
-REDIS_PORT = int(os.environ.get("REDIS_PORT", "6379"))
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
+    from src.common.db import get_database_url
+    from src.common.redis_client import get_redis_client
+
 CACHE_TTL_SECONDS = 300
 CACHE_KEY_PREFIX = "features"
 POOL_MIN_CONN = 1
@@ -40,21 +45,13 @@ POOL_MAX_CONN = 20
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("feature_cache")
 
-_redis_client = None
-_pg_pool = psycopg2.pool.SimpleConnectionPool(POOL_MIN_CONN, POOL_MAX_CONN, **PG_DSN)
+_pg_pool = psycopg2.pool.SimpleConnectionPool(POOL_MIN_CONN, POOL_MAX_CONN, get_database_url())
 
 FEATURE_CACHE_COUNTER = Counter(
     "feature_cache_requests_total",
     "get_customer_features lookups, by whether they hit Redis or fell through to Postgres",
     ["result"],  # "hit" or "miss"
 )
-
-
-def get_redis_client():
-    global _redis_client
-    if _redis_client is None:
-        _redis_client = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, decode_responses=True)
-    return _redis_client
 
 
 def get_customer_features(customer_id):

@@ -25,11 +25,23 @@ context chunks, it does not answer the question itself; the agent's LLM
 is responsible for synthesizing an answer from what comes back.
 """
 
-import psycopg2
 import requests
 from langchain_chroma import Chroma
 from langchain_core.tools import tool
 from langchain_huggingface import HuggingFaceEmbeddings
+
+# Absolute import when loaded as part of the src package; src.common isn't
+# a sibling of this file, so the fallback explicitly puts the project root
+# on sys.path first - needed when this file's own directory is
+# run/imported directly.
+try:
+    from src.common.db import connect_local
+except ImportError:
+    import sys
+    from pathlib import Path
+
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
+    from src.common.db import connect_local
 
 PREDICT_URL = "http://localhost:8000/predict"
 
@@ -37,14 +49,6 @@ CHROMA_DIR = "data/chroma_db"
 COLLECTION_NAME = "project_docs"
 EMBEDDING_MODEL = "BAAI/bge-small-en-v1.5"  # must match build_knowledge_base.py
 _vectorstore = None
-
-PG_DSN = {
-    "host": "localhost",
-    "port": "5432",
-    "dbname": "ml_insight",
-    "user": "postgres",
-    "password": "devpassword",
-}
 
 # Mirrors customer_features' real columns (excluding id/customer_id) -
 # update this if that table's schema changes.
@@ -116,7 +120,7 @@ def get_churn_rate_by_column(column_name: str) -> str:
         ORDER BY cf.{column_name}
     """
 
-    conn = psycopg2.connect(**PG_DSN)
+    conn = connect_local()
     try:
         with conn.cursor() as cur:
             cur.execute(query)
@@ -159,7 +163,7 @@ def get_customer_count(filters: dict) -> str:
         query = "SELECT COUNT(*) FROM customer_features"
         params = ()
 
-    conn = psycopg2.connect(**PG_DSN)
+    conn = connect_local()
     try:
         with conn.cursor() as cur:
             cur.execute(query, params)
