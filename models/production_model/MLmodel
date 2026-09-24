@@ -1,4 +1,3 @@
-artifact_path: file:///C:/Users/Mi/OneDrive/Desktop/ml-insight-platform/mlruns/1/models/m-c3285a0d90f74556b35a6ba9a6b1197b/artifacts
 flavors:
   python_function:
     env:
@@ -17,9 +16,8 @@ flavors:
     - xgboost.core.Booster
     - xgboost.sklearn.XGBClassifier
 mlflow_version: 3.16.1
-model_id: m-c3285a0d90f74556b35a6ba9a6b1197b
-model_size_bytes: 441922
-model_uuid: m-c3285a0d90f74556b35a6ba9a6b1197b
+model_id: null
+model_size_bytes: 441916
+model_uuid: eb6856452df7418b824a230ba3097472
 prompts: null
-run_id: c17ce8742a764552a51fa80bff6a3c63
-utc_time_created: '2026-09-21 17:20:01.274946'
+utc_time_created: '2026-09-24 17:08:34.453001'
