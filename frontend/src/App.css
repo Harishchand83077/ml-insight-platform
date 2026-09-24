@@ -224,6 +224,12 @@
   overflow-x: auto;
 }
 
+.slow-loading-hint {
+  font-size: 13px;
+  color: var(--text-faint);
+  margin-bottom: 2px;
+}
+
 /* typing indicator */
 
 .typing-indicator {

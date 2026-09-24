@@ -54,7 +54,7 @@ def _patch_redis_and_embeddings(raw_entries):
     fake_embeddings.embed_query.return_value = [1.0, 0.0]  # the query vector
     return (
         patch.object(semantic_cache, "_get_redis_client", return_value=fake_redis),
-        patch.object(semantic_cache, "_get_embeddings", return_value=fake_embeddings),
+        patch.object(semantic_cache, "get_embedder", return_value=fake_embeddings),
         fake_redis,
         fake_embeddings,
     )
@@ -117,7 +117,7 @@ class TestStoreInSemanticCache:
         fake_embeddings.embed_query.return_value = [0.1, 0.2, 0.3]
 
         with patch.object(semantic_cache, "_get_redis_client", return_value=fake_redis), \
-             patch.object(semantic_cache, "_get_embeddings", return_value=fake_embeddings):
+             patch.object(semantic_cache, "get_embedder", return_value=fake_embeddings):
             semantic_cache.store_in_semantic_cache(
                 "a new question", "a response", [{"tool": "predict_churn_tool", "args": {}}]
             )

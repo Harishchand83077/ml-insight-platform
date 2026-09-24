@@ -6,10 +6,14 @@ const client = axios.create({
 });
 
 export async function sendChatMessage(sessionId, message) {
-  const { data } = await client.post("/chat", {
-    session_id: sessionId,
-    message,
-  });
+  // Longer than the client default: a cold Render free-tier instance can
+  // take the better part of a minute just to spin up, on top of the
+  // LLM + tool-call round trip itself.
+  const { data } = await client.post(
+    "/chat",
+    { session_id: sessionId, message },
+    { timeout: 120000 }
+  );
   return data; // { session_id, response, tool_calls }
 }
 

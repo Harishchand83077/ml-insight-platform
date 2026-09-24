@@ -1,10 +1,11 @@
 """
 Semantic cache for agent responses: embeds incoming questions with the
-same embedding model used for RAG (BAAI/bge-small-en-v1.5 - must match
-src/agent/tools.py and build_knowledge_base.py), and if a new question is
-highly similar (cosine similarity >= 0.90) to a previously cached
-question, returns that cached response directly instead of calling the
-agent (and its LLM/tool calls) again.
+same shared embedding model instance used for RAG (get_embedder() from
+src.common.embedding_model - see that module for why it's a single
+instance rather than one per caller), and if a new question is highly
+similar (cosine similarity >= 0.90) to a previously cached question,
+returns that cached response directly instead of calling the agent (and
+its LLM/tool calls) again.
 
 Only meaningful for single-turn-equivalent questions: the same question
 can mean something different mid-conversation depending on prior context,
@@ -23,23 +24,24 @@ import json
 import logging
 
 import numpy as np
-from langchain_huggingface import HuggingFaceEmbeddings
 from prometheus_client import Counter
 
 # Absolute import when loaded as part of the src package; src.common isn't
 # a sibling of this file, so the fallback explicitly puts the project root
 # on sys.path first - needed when this file's own directory is
-# run/imported directly. Aliased to _get_redis_client (not get_redis_client)
-# to match this module's existing private-helper naming and so
-# tests/unit/test_semantic_cache.py's patch.object(semantic_cache,
+# run/imported directly. get_redis_client aliased to _get_redis_client (not
+# get_redis_client) to match this module's existing private-helper naming
+# and so tests/unit/test_semantic_cache.py's patch.object(semantic_cache,
 # "_get_redis_client", ...) keeps working unchanged.
 try:
+    from src.common.embedding_model import get_embedder
     from src.common.redis_client import get_redis_client as _get_redis_client
 except ImportError:
     import sys
     from pathlib import Path
 
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
+    from src.common.embedding_model import get_embedder
     from src.common.redis_client import get_redis_client as _get_redis_client
 
 logger = logging.getLogger("semantic_cache")
@@ -47,7 +49,6 @@ logger = logging.getLogger("semantic_cache")
 CACHE_KEY = "semantic_cache"
 MAX_ENTRIES = 200
 SIMILARITY_THRESHOLD = 0.90
-EMBEDDING_MODEL = "BAAI/bge-small-en-v1.5"  # must match src/agent/tools.py
 
 SEMANTIC_CACHE_HIT_COUNTER = Counter(
     "semantic_cache_hits_total",
@@ -58,16 +59,6 @@ SEMANTIC_CACHE_MISS_COUNTER = Counter(
     "First-message /chat requests that did not match anything in the semantic cache "
     "(empty cache, or best match below the similarity threshold)",
 )
-
-_embeddings = None
-
-
-def _get_embeddings():
-    global _embeddings
-    if _embeddings is None:
-        _embeddings = HuggingFaceEmbeddings(model_name=EMBEDDING_MODEL)
-    return _embeddings
-
 
 def _cosine_similarity(a, b):
     a, b = np.array(a), np.array(b)
@@ -82,7 +73,7 @@ def check_semantic_cache(question):
         SEMANTIC_CACHE_MISS_COUNTER.inc()
         return None
 
-    query_embedding = _get_embeddings().embed_query(question)
+    query_embedding = get_embedder().embed_query(question)
 
     best_score = -1.0
     best_entry = None
@@ -108,7 +99,7 @@ def check_semantic_cache(question):
 
 def store_in_semantic_cache(question, response, tool_calls):
     r = _get_redis_client()
-    embedding = _get_embeddings().embed_query(question)
+    embedding = get_embedder().embed_query(question)
     entry = json.dumps(
         {"question": question, "embedding": embedding, "response": response, "tool_calls": tool_calls}
     )

@@ -28,7 +28,6 @@ is responsible for synthesizing an answer from what comes back.
 import requests
 from langchain_chroma import Chroma
 from langchain_core.tools import tool
-from langchain_huggingface import HuggingFaceEmbeddings
 
 # Absolute import when loaded as part of the src package; src.common isn't
 # a sibling of this file, so the fallback explicitly puts the project root
@@ -36,18 +35,19 @@ from langchain_huggingface import HuggingFaceEmbeddings
 # run/imported directly.
 try:
     from src.common.db import connect_local
+    from src.common.embedding_model import get_embedder
 except ImportError:
     import sys
     from pathlib import Path
 
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
     from src.common.db import connect_local
+    from src.common.embedding_model import get_embedder
 
 PREDICT_URL = "http://localhost:8000/predict"
 
 CHROMA_DIR = "data/chroma_db"
 COLLECTION_NAME = "project_docs"
-EMBEDDING_MODEL = "BAAI/bge-small-en-v1.5"  # must match build_knowledge_base.py
 _vectorstore = None
 
 # Mirrors customer_features' real columns (excluding id/customer_id) -
@@ -178,10 +178,9 @@ def get_customer_count(filters: dict) -> str:
 def _get_vectorstore():
     global _vectorstore
     if _vectorstore is None:
-        embeddings = HuggingFaceEmbeddings(model_name=EMBEDDING_MODEL)
         _vectorstore = Chroma(
             collection_name=COLLECTION_NAME,
-            embedding_function=embeddings,
+            embedding_function=get_embedder(),
             persist_directory=CHROMA_DIR,
         )
     return _vectorstore

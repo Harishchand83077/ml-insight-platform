@@ -21,20 +21,31 @@ from contextlib import asynccontextmanager
 import groq
 import mlflow
 import mlflow.sklearn
+import torch
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from langchain_huggingface import HuggingFaceEmbeddings
 from prometheus_client import Histogram
 from prometheus_fastapi_instrumentator import Instrumentator
 from pydantic import BaseModel
 
 from src.agent.agent import agent as churn_agent
 from src.agent.semantic_cache import check_semantic_cache, store_in_semantic_cache
+from src.common.embedding_model import EMBEDDING_MODEL_NAME, set_embedder
 from src.models.train_baseline import prepare_model_input
 from src.serving.feature_cache import get_customer_features
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("api")
+
+# Limiting torch's intra-op thread pool matters even on CPU-only torch (see
+# Dockerfile): unconstrained, it defaults to one thread per core, and on a
+# memory/CPU-constrained free-tier instance that contention adds to the
+# same pressure that's been crashing the instance, not just raw model
+# memory. Set before any model (xgboost's torch-free, but the embedding
+# model is not) is loaded.
+torch.set_num_threads(1)
 
 model_state = {}
 
@@ -55,9 +66,20 @@ def load_production_model():
     return pipeline
 
 
+def load_embedder():
+    """Loads the one shared sentence-transformers embedding model instance
+    - see src/common/embedding_model.py for why this must happen exactly
+    once, here, rather than lazily in the RAG tool or semantic cache."""
+    embedder = HuggingFaceEmbeddings(model_name=EMBEDDING_MODEL_NAME)
+    logger.info("Loaded embedding model %s", EMBEDDING_MODEL_NAME)
+    return embedder
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     model_state["pipeline"] = load_production_model()
+    model_state["embedder"] = load_embedder()
+    set_embedder(model_state["embedder"])
     yield
     model_state.clear()
 

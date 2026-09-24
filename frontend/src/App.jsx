@@ -12,8 +12,10 @@ export default function App() {
   const [sessionId, setSessionId] = useState(newSessionId);
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [slowLoading, setSlowLoading] = useState(false);
   const [error, setError] = useState(null);
   const scrollRef = useRef(null);
+  const slowLoadingTimerRef = useRef(null);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
@@ -23,6 +25,11 @@ export default function App() {
     setError(null);
     setMessages((prev) => [...prev, { role: "user", content: text }]);
     setLoading(true);
+
+    // Most requests finish well under this - it only fires (and swaps the
+    // spinner's text) when something's actually taking a while, e.g. a
+    // cold Render free-tier instance spinning up.
+    slowLoadingTimerRef.current = setTimeout(() => setSlowLoading(true), 5000);
 
     try {
       const data = await sendChatMessage(sessionId, text);
@@ -37,6 +44,8 @@ export default function App() {
           : `Request failed: ${err.response?.data?.detail || err.message}`
       );
     } finally {
+      clearTimeout(slowLoadingTimerRef.current);
+      setSlowLoading(false);
       setLoading(false);
     }
   }
@@ -80,6 +89,11 @@ export default function App() {
         {loading && (
           <div className="message message-assistant message-pending">
             <div className="message-role">Assistant</div>
+            {slowLoading && (
+              <div className="slow-loading-hint">
+                Waking up the server (this can take up to a minute on first request)...
+              </div>
+            )}
             <div className="typing-indicator">
               <span></span>
               <span></span>

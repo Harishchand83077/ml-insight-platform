@@ -394,3 +394,56 @@
   development artifacts (every experiment run, not just the deployed 
   one), not deployment artifacts. Only the exported production model 
   belongs in the repo/image.
+
+  ## Backend live on Render (Week 8)
+
+- https://ml-insight-platform.onrender.com — FastAPI + agent + Supabase 
+  (Session Pooler) + Upstash + exported production model, all live.
+- Two real deployment-specific bugs found and fixed along the way: 
+  Supabase's direct connection is IPv6-only (Render's free tier has no 
+  outbound IPv6) — fixed via Session Pooler; MLflow tracking store 
+  never shipped to the container — fixed by exporting a frozen model 
+  artifact instead of querying the tracking store at runtime.
+
+  ## Backend fully live and verified (Week 8)
+
+- https://ml-insight-platform.onrender.com/predict confirmed working 
+  end-to-end in production: Supabase (Session Pooler) → feature lookup 
+  → Redis/Upstash cache check → model inference → correct response 
+  (matches local: 7590-VHVEG, 2.53% churn probability).
+- Third deployment bug found/fixed: REDIS_URL env var was empty/unsaved 
+  in Render's dashboard (separate issue from the earlier Supabase IPv6 
+  problem) — Redis client's from_url() failed with a clear scheme-
+  validation error, quickly diagnosed from the traceback.
+
+  ## Full backend verified live (Week 8)
+
+- /predict and /chat both confirmed working end-to-end in production: 
+  Supabase, Upstash (feature + semantic cache), Groq, the agent's 
+  tool-calling, and RAG all functioning together on Render.
+- Semantic cache hit confirmed live (similarity=0.9985) on a repeated 
+  question — full caching behavior verified in production, not just locally.
+
+  ## Full system live (Week 8 close)
+
+- https://ml-insight-platform.vercel.app (frontend) → 
+  https://ml-insight-platform.onrender.com (backend) → Supabase + 
+  Upstash + Groq, fully public and functional.
+- CORS locked to the exact production domain, no wildcards remaining.
+
+## Fixed OOM crash from redundant model loading (Week 8)
+
+- Root cause: sentence-transformers embedding model was lazily 
+  instantiated separately in 3 places (semantic_cache.py, tools.py, 
+  build_knowledge_base.py) — under live request load, this caused a 
+  memory spike that crashed the Render instance (confirmed: "Instance 
+  failed", health check timeout).
+- Fixed by loading the embedding model once at FastAPI startup 
+  (lifespan handler, same pattern as the XGBoost model), shared via a 
+  dependency-free leaf module (src/common/embedding_model.py) to avoid 
+  a circular import between api.py and agent/tools.py.
+- Added torch.set_num_threads(1) to reduce CPU/memory contention on 
+  Render's constrained free-tier instance.
+- Result: repeated model loads eliminated (1 load at startup vs. N per 
+  request), per-request latency dropped from ~40s (cold embedding load) 
+  to ~0.3s.
