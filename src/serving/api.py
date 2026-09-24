@@ -64,16 +64,13 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
-# TODO: once the frontend is deployed to Vercel, replace allow_origin_regex
-# below with the exact production URL in allow_origins (e.g.
-# "https://ml-insight-platform.vercel.app") and drop the regex - a wildcard
-# is only a placeholder until the real URL is known, not something to leave
-# in place long-term. Origins are combined via OR: a request is allowed if
-# it matches allow_origins OR allow_origin_regex.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:3000"],
-    allow_origin_regex=r"https://.*\.vercel\.app",
+    allow_origins=[
+        "http://localhost:5173",
+        "http://localhost:3000",
+        "https://ml-insight-platform.vercel.app",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
