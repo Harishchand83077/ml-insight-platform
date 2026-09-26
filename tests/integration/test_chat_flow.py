@@ -34,13 +34,19 @@ def client(redis_up, groq_key_present):
         yield test_client
 
 
-def test_session_memory_and_clear(client):
+def test_chat_without_token_returns_401(client):
+    response = client.post("/chat", json={"session_id": "irrelevant", "message": "hi"})
+    assert response.status_code == 401
+
+
+def test_session_memory_and_clear(client, auth_headers):
     session_id = f"pytest-{uuid.uuid4()}"
 
     # turn 1: give the agent a fact to remember, a question with no tool needed
     first = client.post(
         "/chat",
         json={"session_id": session_id, "message": "Remember this codeword: PINEAPPLE42. Just say OK."},
+        headers=auth_headers,
     )
     assert first.status_code == 200
     first_data = first.json()
@@ -51,23 +57,25 @@ def test_session_memory_and_clear(client):
     second = client.post(
         "/chat",
         json={"session_id": session_id, "message": "What was the codeword I just gave you?"},
+        headers=auth_headers,
     )
     assert second.status_code == 200
     second_data = second.json()
     assert "pineapple42" in second_data["response"].lower()
 
     # clearing the session works and is idempotent-safe (reports whether it existed)
-    delete_first = client.delete(f"/chat/{session_id}")
+    delete_first = client.delete(f"/chat/{session_id}", headers=auth_headers)
     assert delete_first.status_code == 200
     assert delete_first.json() == {"session_id": session_id, "cleared": True}
 
-    delete_second = client.delete(f"/chat/{session_id}")
+    delete_second = client.delete(f"/chat/{session_id}", headers=auth_headers)
     assert delete_second.json() == {"session_id": session_id, "cleared": False}
 
     # after clearing, a fresh message in the same session_id has no memory of the codeword
     third = client.post(
         "/chat",
         json={"session_id": session_id, "message": "What was the codeword I gave you earlier?"},
+        headers=auth_headers,
     )
     assert third.status_code == 200
     assert "pineapple42" not in third.json()["response"].lower()

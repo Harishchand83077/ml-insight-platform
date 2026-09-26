@@ -63,6 +63,17 @@ CHAT_QUESTIONS = [
 class ChurnApiUser(HttpUser):
     wait_time = between(1, 3)
 
+    def on_start(self):
+        # /predict and /chat now require a JWT - each simulated user signs
+        # up once (a unique throwaway email) and attaches the token to
+        # every subsequent request this session makes.
+        email = f"locust-{uuid.uuid4()}@example.test"
+        response = self.client.post(
+            "/auth/signup", json={"email": email, "password": "locust-load-test-password"}
+        )
+        token = response.json()["access_token"]
+        self.client.headers.update({"Authorization": f"Bearer {token}"})
+
     @task(60)
     def predict(self):
         customer_id = random.choice(CUSTOMER_IDS)

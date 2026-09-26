@@ -1,9 +1,16 @@
 """
-Churn-prediction API: GET /health, POST /predict, POST /chat,
-DELETE /chat/{session_id}, and GET /metrics (Prometheus). The XGBoost
-model (the full preprocessing + classifier pipeline, from its MLflow run
-artifact) is loaded once at startup, not per-request. The LangChain agent
-(src/agent/agent.py) is imported once at module load for the same reason.
+Churn-prediction API: GET /health, POST /auth/signup, POST /auth/login,
+POST /predict, POST /chat, DELETE /chat/{session_id}, and GET /metrics
+(Prometheus). The XGBoost model (the full preprocessing + classifier
+pipeline, from its MLflow run artifact) is loaded once at startup, not
+per-request. The LangChain agent (src/agent/agent.py) is imported once
+at module load for the same reason.
+
+/predict and /chat require a valid JWT (Authorization: Bearer <token>,
+obtained from /auth/signup or /auth/login) - see src/serving/auth.py for
+password hashing, token issuance/verification, and the get_current_user
+dependency. Every call to /predict and /chat is recorded in the
+audit_logs table (auth.log_audit), tied to the authenticated user.
 
 /metrics gets the standard HTTP metrics (request count, latency
 histograms, status codes per endpoint) for free from
@@ -22,18 +29,28 @@ import groq
 import mlflow
 import mlflow.sklearn
 import torch
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from langchain_huggingface import HuggingFaceEmbeddings
 from prometheus_client import Histogram
 from prometheus_fastapi_instrumentator import Instrumentator
-from pydantic import BaseModel
+from pydantic import BaseModel, constr
 
 from src.agent.agent import agent as churn_agent
 from src.agent.semantic_cache import check_semantic_cache, store_in_semantic_cache
 from src.common.embedding_model import EMBEDDING_MODEL_NAME, set_embedder
 from src.models.train_baseline import prepare_model_input
+from src.serving.auth import (
+    EmailAlreadyExistsError,
+    create_access_token,
+    create_user,
+    get_current_user,
+    get_user_by_email,
+    hash_password,
+    log_audit,
+    verify_password,
+)
 from src.serving.feature_cache import get_customer_features
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -114,13 +131,26 @@ AGENT_RESPONSE_TIME = Histogram(
 # catches both.
 GROQ_RATE_LIMIT_STATUS_CODES = {429, 413}
 
-# Session_id -> full LangChain message list for that conversation. In-memory
-# only: this is deliberately simple for now - it won't survive a server
-# restart (--reload will wipe it on every code change too) and isn't safe
-# across multiple server instances/workers, since each process has its own
-# dict. A real deployment would back this with Redis or a proper session
-# store instead.
-chat_sessions: dict[str, list] = {}
+# (user_id, session_id) -> full LangChain message list for that
+# conversation - keyed by user as well as session_id so one authenticated
+# user can never read or continue another user's session, even if they
+# guessed or reused the same session_id. In-memory only: this is
+# deliberately simple for now - it won't survive a server restart
+# (--reload will wipe it on every code change too) and isn't safe across
+# multiple server instances/workers, since each process has its own dict.
+# A real deployment would back this with Redis or a proper session store
+# instead.
+chat_sessions: dict[tuple[str, str], list] = {}
+
+
+class SignupRequest(BaseModel):
+    email: str
+    password: constr(min_length=8, max_length=72)  # bcrypt's own input limit is 72 bytes
+
+
+class LoginRequest(BaseModel):
+    email: str
+    password: str
 
 
 class PredictRequest(BaseModel):
@@ -137,8 +167,39 @@ def health():
     return {"status": "ok"}
 
 
+@app.post("/auth/signup", status_code=201)
+def signup(req: SignupRequest):
+    if get_user_by_email(req.email) is not None:
+        raise HTTPException(status_code=409, detail="email already registered")
+
+    try:
+        user = create_user(req.email, hash_password(req.password))
+    except EmailAlreadyExistsError:
+        # the pre-check above already covers the common case; this catches
+        # the race where two signups for the same email land concurrently
+        raise HTTPException(status_code=409, detail="email already registered") from None
+
+    token = create_access_token(user["id"], user["email"])
+    return {"access_token": token, "token_type": "bearer"}
+
+
+@app.post("/auth/login")
+def login(req: LoginRequest):
+    user = get_user_by_email(req.email)
+    # Same generic error whether the email doesn't exist or the password is
+    # wrong - not revealing which, so a login attempt can't be used to
+    # enumerate registered emails.
+    if user is None or not verify_password(req.password, user["hashed_password"]):
+        raise HTTPException(status_code=401, detail="invalid email or password")
+
+    token = create_access_token(user["id"], user["email"])
+    return {"access_token": token, "token_type": "bearer"}
+
+
 @app.post("/predict")
-def predict(req: PredictRequest):
+def predict(req: PredictRequest, current_user: dict = Depends(get_current_user)):
+    log_audit(current_user["id"], "/predict", req.customer_id)
+
     features, cache_hit = get_customer_features(req.customer_id)
     if features is None:
         raise HTTPException(status_code=404, detail=f"customer_id '{req.customer_id}' not found")
@@ -156,8 +217,11 @@ def predict(req: PredictRequest):
 
 
 @app.post("/chat")
-def chat(req: ChatRequest):
-    previous_messages = chat_sessions.get(req.session_id, [])
+def chat(req: ChatRequest, current_user: dict = Depends(get_current_user)):
+    log_audit(current_user["id"], "/chat", req.message)
+
+    session_key = (current_user["id"], req.session_id)
+    previous_messages = chat_sessions.get(session_key, [])
     is_first_message = not previous_messages
 
     # Semantic cache only applies to the first message of a session - the
@@ -166,7 +230,7 @@ def chat(req: ChatRequest):
     if is_first_message:
         cached = check_semantic_cache(req.message)
         if cached is not None:
-            chat_sessions[req.session_id] = [
+            chat_sessions[session_key] = [
                 {"role": "user", "content": req.message},
                 {"role": "assistant", "content": cached["response"]},
             ]
@@ -190,7 +254,7 @@ def chat(req: ChatRequest):
             )
         raise
 
-    chat_sessions[req.session_id] = result["messages"]
+    chat_sessions[session_key] = result["messages"]
 
     # only the messages generated by this turn (not prior turns already
     # reported to the caller before), so tool_calls reflects just this call
@@ -215,6 +279,10 @@ def chat(req: ChatRequest):
 
 
 @app.delete("/chat/{session_id}")
-def clear_chat(session_id: str):
-    existed = chat_sessions.pop(session_id, None) is not None
+def clear_chat(session_id: str, current_user: dict = Depends(get_current_user)):
+    # Protected (not explicitly requested, but required for correctness):
+    # chat_sessions is keyed by (user_id, session_id) now, so this needs
+    # current_user to build the same key - and as a side effect, one user
+    # can no longer clear another user's session by guessing its id.
+    existed = chat_sessions.pop((current_user["id"], session_id), None) is not None
     return {"session_id": session_id, "cleared": existed}

@@ -447,3 +447,29 @@
 - Result: repeated model loads eliminated (1 load at startup vs. N per 
   request), per-request latency dropped from ~40s (cold embedding load) 
   to ~0.3s.
+
+  ## Deployment complete and verified stable (Week 8)
+
+- Full stack confirmed live and crash-free under real use: 
+  https://ml-insight-platform.vercel.app → 
+  https://ml-insight-platform.onrender.com → Supabase, Upstash, Groq.
+- Post-fix verification: /chat request completed successfully, semantic 
+  cache hit correctly logged, no instance failure or health check 
+  timeout — confirms the embedding-model consolidation fix resolved 
+  the earlier OOM crash.
+
+
+  ## Authentication (Week 9)
+
+- JWT auth added: POST /auth/signup, POST /auth/login, get_current_user 
+  dependency protecting /predict, /chat, DELETE /chat/{session_id}.
+- Security details: generic 401 on login failure (prevents user 
+  enumeration via distinguishing error messages), race-guarded duplicate 
+  signup (pre-check + unique-constraint fallback, avoiding a TOCTOU 
+  race), correct 401 vs 403 semantics (missing token vs bad token).
+- audit_logs table records every /predict and /chat call per user, 
+  best-effort (logging failure warns, doesn't fail the request).
+- Real dependency bug found: passlib's bcrypt backend breaks on 
+  bcrypt>=4.1 (probes a removed attribute) — pinned bcrypt==4.0.1.
+- Deliberately deferred frontend wiring — Vercel frontend will 401 
+  until login UI is built (next task), backend verified standalone first.

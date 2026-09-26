@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import Message from "./components/Message.jsx";
 import ChatInput from "./components/ChatInput.jsx";
-import { sendChatMessage, clearChatSession } from "./api.js";
+import AuthScreen from "./components/AuthScreen.jsx";
+import { sendChatMessage, clearChatSession, setAuthToken, setOnUnauthorized } from "./api.js";
 import "./App.css";
 
 function newSessionId() {
@@ -9,6 +10,15 @@ function newSessionId() {
 }
 
 export default function App() {
+  // Deliberately React state, not localStorage: an XSS payload that can run
+  // in this page can read anything localStorage holds, indefinitely, but
+  // can only read in-memory state for as long as this page stays open. The
+  // trade-off is a page refresh always logs the user out - acceptable for
+  // this project's scope. A production app would use httpOnly cookies
+  // instead, which survive a refresh without ever being readable by
+  // JavaScript in the first place (closing the risk rather than just
+  // shortening its window).
+  const [token, setToken] = useState(null);
   const [sessionId, setSessionId] = useState(newSessionId);
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -17,9 +27,40 @@ export default function App() {
   const scrollRef = useRef(null);
   const slowLoadingTimerRef = useRef(null);
 
+  // Mirrors token into api.js's axios interceptor, which can't read React
+  // state directly.
+  useEffect(() => {
+    setAuthToken(token);
+  }, [token]);
+
+  // Registered once: any 401 from the API (expired/invalid/missing token)
+  // logs the user out and drops them back on the auth screen, rather than
+  // leaving them stuck on a chat UI that would fail on every request.
+  useEffect(() => {
+    setOnUnauthorized(() => {
+      setToken(null);
+      setMessages([]);
+      setSessionId(newSessionId());
+    });
+  }, []);
+
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages, loading]);
+
+  function handleAuthenticated(newToken) {
+    setError(null);
+    setMessages([]);
+    setSessionId(newSessionId());
+    setToken(newToken);
+  }
+
+  function handleLogout() {
+    setToken(null);
+    setMessages([]);
+    setSessionId(newSessionId());
+    setError(null);
+  }
 
   async function handleSend(text) {
     setError(null);
@@ -38,11 +79,16 @@ export default function App() {
         { role: "assistant", content: data.response, toolCalls: data.tool_calls },
       ]);
     } catch (err) {
-      setError(
-        err.code === "ERR_NETWORK" || err.message === "Network Error"
-          ? "Couldn't reach the API. Is the FastAPI server running on localhost:8000?"
-          : `Request failed: ${err.response?.data?.detail || err.message}`
-      );
+      // A 401 already sends the user to the auth screen via
+      // setOnUnauthorized (api.js) - no need for a duplicate error banner
+      // on a component that's about to be replaced.
+      if (err.response?.status !== 401) {
+        setError(
+          err.code === "ERR_NETWORK" || err.message === "Network Error"
+            ? "Couldn't reach the API. Is the FastAPI server running on localhost:8000?"
+            : `Request failed: ${err.response?.data?.detail || err.message}`
+        );
+      }
     } finally {
       clearTimeout(slowLoadingTimerRef.current);
       setSlowLoading(false);
@@ -62,6 +108,10 @@ export default function App() {
     setMessages([]);
   }
 
+  if (!token) {
+    return <AuthScreen onAuthenticated={handleAuthenticated} />;
+  }
+
   return (
     <div className="app">
       <header className="app-header">
@@ -69,9 +119,14 @@ export default function App() {
           <h1>Churn Analytics Assistant</h1>
           <span className="session-id">session: {sessionId.slice(0, 8)}</span>
         </div>
-        <button className="new-conversation" onClick={handleNewConversation}>
-          New conversation
-        </button>
+        <div className="header-actions">
+          <button className="new-conversation" onClick={handleNewConversation}>
+            New conversation
+          </button>
+          <button className="log-out" onClick={handleLogout}>
+            Log out
+          </button>
+        </div>
       </header>
 
       <main className="chat-area" ref={scrollRef}>

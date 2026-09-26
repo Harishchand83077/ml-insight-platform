@@ -24,3 +24,9 @@ langchain-huggingface==1.2.2
 sentence-transformers==6.1.0
 requests==2.34.2
 prometheus-fastapi-instrumentator==8.1.0
+passlib==1.7.4
+# Pinned, not left to resolve unbounded: passlib 1.7.4 (its last release)
+# probes bcrypt.__about__.__version__, an attribute bcrypt removed in
+# 4.1 - see src/serving/auth.py's docstring.
+bcrypt==4.0.1
+PyJWT==2.15.0
