@@ -12,6 +12,15 @@ password hashing, token issuance/verification, and the get_current_user
 dependency. Every call to /predict and /chat is recorded in the
 audit_logs table (auth.log_audit), tied to the authenticated user.
 
+Model loading (XGBoost + the embedding model, together often 30-60s on a
+cold instance - see load_embedder's docstring) happens in a background
+asyncio task kicked off from lifespan, not awaited during startup - so
+the app finishes startup and starts accepting connections immediately.
+/health always returns 200 the moment the process is up, regardless of
+model readiness; /predict and /chat check model_state["ready"] and
+return 503 until loading finishes, rather than hanging or crashing
+against a model_state that isn't populated yet.
+
 /metrics gets the standard HTTP metrics (request count, latency
 histograms, status codes per endpoint) for free from
 prometheus-fastapi-instrumentator. Beyond that, three app-specific
@@ -22,6 +31,7 @@ latency on /chat wouldn't distinguish a semantic-cache-hit response
 (near-instant) from a real agent call (LLM + tool round trips).
 """
 
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 
@@ -65,6 +75,7 @@ logger = logging.getLogger("api")
 torch.set_num_threads(1)
 
 model_state = {}
+_startup_task = None  # holds a strong reference - see lifespan()
 
 
 PRODUCTION_MODEL_DIR = "models/production_model"
@@ -92,12 +103,38 @@ def load_embedder():
     return embedder
 
 
+async def _load_models():
+    """Runs as a background task, not awaited by lifespan - both loaders
+    are blocking calls (mlflow.sklearn.load_model does file I/O;
+    HuggingFaceEmbeddings does a network round trip to the HF Hub even
+    when the model is already cached locally - see load_embedder's
+    docstring), so each runs in a worker thread via asyncio.to_thread
+    rather than directly on the event loop. Running them directly here
+    would block the loop for the exact duration this whole refactor is
+    meant to avoid blocking - /health would go unresponsive right along
+    with everything else."""
+    try:
+        model_state["pipeline"] = await asyncio.to_thread(load_production_model)
+        model_state["embedder"] = await asyncio.to_thread(load_embedder)
+        set_embedder(model_state["embedder"])
+        model_state["ready"] = True
+        logger.info("Model loading complete - now serving /predict and /chat")
+    except Exception:
+        logger.exception("Model loading failed - /predict and /chat will keep returning 503")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    model_state["pipeline"] = load_production_model()
-    model_state["embedder"] = load_embedder()
-    set_embedder(model_state["embedder"])
+    global _startup_task
+    model_state["ready"] = False
+    # Not awaited: startup returns immediately (so the app can start
+    # accepting connections - in particular /health - right away) while
+    # this keeps running in the background. Kept in a module-level
+    # variable so it isn't garbage-collected mid-flight - asyncio only
+    # holds a weak reference to a task returned by create_task.
+    _startup_task = asyncio.create_task(_load_models())
     yield
+    _startup_task.cancel()
     model_state.clear()
 
 
@@ -164,7 +201,11 @@ class ChatRequest(BaseModel):
 
 @app.get("/health")
 def health():
-    return {"status": "ok"}
+    # Always 200 the moment the process is up - a liveness check, not a
+    # readiness check. models_ready in the body lets a caller distinguish
+    # "alive but still loading" from "alive and serving" without /predict
+    # or /chat needing to be hit (and bounced with 503) just to find out.
+    return {"status": "ok", "models_ready": model_state.get("ready", False)}
 
 
 @app.post("/auth/signup", status_code=201)
@@ -198,6 +239,9 @@ def login(req: LoginRequest):
 
 @app.post("/predict")
 def predict(req: PredictRequest, current_user: dict = Depends(get_current_user)):
+    if not model_state.get("ready", False):
+        raise HTTPException(status_code=503, detail="Models still loading, please retry shortly")
+
     log_audit(current_user["id"], "/predict", req.customer_id)
 
     features, cache_hit = get_customer_features(req.customer_id)
@@ -218,6 +262,9 @@ def predict(req: PredictRequest, current_user: dict = Depends(get_current_user))
 
 @app.post("/chat")
 def chat(req: ChatRequest, current_user: dict = Depends(get_current_user)):
+    if not model_state.get("ready", False):
+        raise HTTPException(status_code=503, detail="Models still loading, please retry shortly")
+
     log_audit(current_user["id"], "/chat", req.message)
 
     session_key = (current_user["id"], req.session_id)

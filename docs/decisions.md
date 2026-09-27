@@ -473,3 +473,14 @@
   bcrypt>=4.1 (probes a removed attribute) — pinned bcrypt==4.0.1.
 - Deliberately deferred frontend wiring — Vercel frontend will 401 
   until login UI is built (next task), backend verified standalone first.
+
+  ## Frontend auth (Week 9)
+
+- Login/signup UI added; JWT held in React state only (not localStorage) 
+  — deliberate XSS-mitigation trade-off, accepting logout-on-refresh; a 
+  production version would use httpOnly cookies instead.
+- Axios interceptors centralize auth: one attaches the Bearer token to 
+  every request, one handles 401 globally (clears session, returns to 
+  login) — new endpoints get both behaviors automatically.
+- Verified live against the real deployed backend: signup → chat → 
+  refresh (correctly logged out) → re-login → logout.
