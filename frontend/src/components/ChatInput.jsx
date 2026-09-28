@@ -1,14 +1,15 @@
-import { useState } from "react";
-
-export default function ChatInput({ onSend, disabled }) {
-  const [value, setValue] = useState("");
+// Controlled by App.jsx (value/onChange) rather than owning its own text
+// state - a failed send needs to be able to restore the user's text after
+// the fact (see App.jsx's handleSend), which isn't possible if this
+// component clears itself the moment onSend is called.
+export default function ChatInput({ value, onChange, onSend, disabled, sendDisabled }) {
+  const blocked = disabled || sendDisabled;
 
   function handleSubmit(e) {
     e.preventDefault();
     const trimmed = value.trim();
-    if (!trimmed || disabled) return;
+    if (!trimmed || blocked) return;
     onSend(trimmed);
-    setValue("");
   }
 
   function handleKeyDown(e) {
@@ -21,13 +22,13 @@ export default function ChatInput({ onSend, disabled }) {
     <form className="chat-input" onSubmit={handleSubmit}>
       <textarea
         value={value}
-        onChange={(e) => setValue(e.target.value)}
+        onChange={(e) => onChange(e.target.value)}
         onKeyDown={handleKeyDown}
         placeholder="Ask about a customer, a churn rate, or how a metric was chosen..."
         disabled={disabled}
         rows={1}
       />
-      <button type="submit" disabled={disabled || !value.trim()}>
+      <button type="submit" disabled={blocked || !value.trim()}>
         {disabled ? "Sending..." : "Send"}
       </button>
     </form>

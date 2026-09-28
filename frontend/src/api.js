@@ -43,14 +43,67 @@ client.interceptors.response.use(
   }
 );
 
+// Longer than the client default: a cold Render free-tier instance can
+// take the better part of a minute just to spin up, and signup/login are
+// often the very first request a session makes, before the on-load
+// /health poll (below) has necessarily confirmed the server is awake.
+const AUTH_TIMEOUT_MS = 90000;
+
 export async function signup(email, password) {
-  const { data } = await client.post("/auth/signup", { email, password });
+  const { data } = await client.post("/auth/signup", { email, password }, { timeout: AUTH_TIMEOUT_MS });
   return data; // { access_token, token_type }
 }
 
 export async function login(email, password) {
-  const { data } = await client.post("/auth/login", { email, password });
+  const { data } = await client.post("/auth/login", { email, password }, { timeout: AUTH_TIMEOUT_MS });
   return data; // { access_token, token_type }
+}
+
+// Short, deliberately not the client default: used by App.jsx's on-load
+// readiness poll, which fires every few seconds - a single hung attempt
+// shouldn't be allowed to stall that cadence for anywhere near as long as
+// a real request would be allowed to run.
+export async function checkHealth() {
+  const { data } = await client.get("/health", { timeout: 4000 });
+  return data; // { status, models_ready }
+}
+
+// Classifies an axios error from a chat/predict-style call into a
+// user-facing message and whether the failure is one where the user's
+// own input is worth preserving for a retry (see App.jsx's handleSend).
+// 401 is deliberately not given a message here - that's handled globally
+// by the onUnauthorized flow above, which drops the user back to the
+// auth screen instead of showing a banner on a screen that's about to
+// disappear.
+const WAKING_UP_MESSAGE = "The server is waking up - free-tier hosting can take a minute. Please try again.";
+
+export function classifyChatError(err) {
+  const status = err.response?.status;
+
+  if (status === 401) {
+    return { message: null, retryableInput: false };
+  }
+  if (status === 409) {
+    return { message: err.response?.data?.detail || "Conflict.", retryableInput: false };
+  }
+  if (status === 502 || status === 503 || status === 504) {
+    // Input is only restored for 502/503, not 504: a gateway timeout can
+    // mean the request actually reached the app and is just slow to
+    // finish, where silently resending risks a duplicate; 502/503 mean it
+    // was bounced before that could happen.
+    return { message: WAKING_UP_MESSAGE, retryableInput: status !== 504 };
+  }
+  if (status >= 500) {
+    return { message: `Server error (${status})`, retryableInput: false };
+  }
+  if (!status) {
+    // No HTTP response reached us at all: a client-side timeout
+    // (err.code === "ECONNABORTED") or the connection failing outright
+    // (err.code === "ERR_NETWORK") - in practice indistinguishable from a
+    // 502/503 from the user's point of view, so same message.
+    return { message: WAKING_UP_MESSAGE, retryableInput: false };
+  }
+  return { message: err.response?.data?.detail || err.message, retryableInput: false };
 }
 
 export async function sendChatMessage(sessionId, message) {
