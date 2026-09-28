@@ -484,3 +484,28 @@
   login) — new endpoints get both behaviors automatically.
 - Verified live against the real deployed backend: signup → chat → 
   refresh (correctly logged out) → re-login → logout.
+
+
+
+  ## Liveness/readiness separation (Week 9)
+
+- Fixed repeated deploy failures: Render's port-scan timeout was killing 
+  deploys because /health didn't respond until all model loading 
+  finished (XGBoost + embedding model, sequential, blocking).
+- Fixed by loading models in a background asyncio task (via 
+  asyncio.to_thread, since both loaders are blocking I/O) while lifespan 
+  yields immediately — /health always returns 200 instantly; /predict 
+  and /chat return 503 "still loading" until model_state["ready"] flips 
+  true.
+- Kept the startup task in a module-level reference — asyncio holds only 
+  a weak reference to tasks from create_task(), so an unreferenced task 
+  can be garbage-collected mid-execution.
+
+  ## Liveness/readiness fix verified live (Week 9)
+
+- Confirmed in production: /health responded 200 within 1s of container 
+  start, well before model loading began — Render marked the service 
+  live immediately, no more port-scan timeouts on slow model loads.
+
+
+  

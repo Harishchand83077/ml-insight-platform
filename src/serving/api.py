@@ -1,10 +1,10 @@
 """
 Churn-prediction API: GET /health, POST /auth/signup, POST /auth/login,
-POST /predict, POST /chat, DELETE /chat/{session_id}, and GET /metrics
-(Prometheus). The XGBoost model (the full preprocessing + classifier
-pipeline, from its MLflow run artifact) is loaded once at startup, not
-per-request. The LangChain agent (src/agent/agent.py) is imported once
-at module load for the same reason.
+POST /predict, POST /chat, DELETE /chat/{session_id}, POST /feedback, and
+GET /metrics (Prometheus). The XGBoost model (the full preprocessing +
+classifier pipeline, from its MLflow run artifact) is loaded once at
+startup, not per-request. The LangChain agent (src/agent/agent.py) is
+imported once at module load for the same reason.
 
 /predict and /chat require a valid JWT (Authorization: Bearer <token>,
 obtained from /auth/signup or /auth/login) - see src/serving/auth.py for
@@ -34,6 +34,7 @@ latency on /chat wouldn't distinguish a semantic-cache-hit response
 import asyncio
 import logging
 from contextlib import asynccontextmanager
+from typing import Literal
 
 import groq
 import mlflow
@@ -62,6 +63,7 @@ from src.serving.auth import (
     verify_password,
 )
 from src.serving.feature_cache import get_customer_features
+from src.serving.feedback import store_feedback
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("api")
@@ -199,6 +201,12 @@ class ChatRequest(BaseModel):
     message: str
 
 
+class FeedbackRequest(BaseModel):
+    session_id: str
+    message_content: str
+    rating: Literal["up", "down"]
+
+
 @app.get("/health")
 def health():
     # Always 200 the moment the process is up - a liveness check, not a
@@ -333,3 +341,9 @@ def clear_chat(session_id: str, current_user: dict = Depends(get_current_user)):
     # can no longer clear another user's session by guessing its id.
     existed = chat_sessions.pop((current_user["id"], session_id), None) is not None
     return {"session_id": session_id, "cleared": existed}
+
+
+@app.post("/feedback", status_code=201)
+def feedback(req: FeedbackRequest, current_user: dict = Depends(get_current_user)):
+    store_feedback(current_user["id"], req.session_id, req.message_content, req.rating)
+    return {"status": "recorded"}

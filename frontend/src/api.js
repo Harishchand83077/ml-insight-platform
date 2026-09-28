@@ -69,3 +69,12 @@ export async function clearChatSession(sessionId) {
   const { data } = await client.delete(`/chat/${sessionId}`);
   return data; // { session_id, cleared }
 }
+
+export async function sendFeedback(sessionId, messageContent, rating) {
+  const { data } = await client.post("/feedback", {
+    session_id: sessionId,
+    message_content: messageContent,
+    rating,
+  });
+  return data; // { status: "recorded" }
+}

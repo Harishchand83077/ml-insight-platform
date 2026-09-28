@@ -1,5 +1,7 @@
+import { useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { sendFeedback } from "../api.js";
 
 function ToolCalls({ toolCalls }) {
   if (!toolCalls || toolCalls.length === 0) return null;
@@ -21,7 +23,50 @@ function ToolCalls({ toolCalls }) {
   );
 }
 
-export default function Message({ role, content, toolCalls, isError }) {
+function FeedbackButtons({ sessionId, content }) {
+  const [rating, setRating] = useState(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  async function vote(value) {
+    if (rating !== null || submitting) return;
+    setSubmitting(true);
+    try {
+      await sendFeedback(sessionId, content, value);
+      setRating(value);
+    } catch {
+      // best-effort - leave both buttons enabled so the user can retry
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="feedback-row">
+      <button
+        type="button"
+        className={`feedback-btn${rating === "up" ? " feedback-btn-up-selected" : ""}`}
+        onClick={() => vote("up")}
+        disabled={rating !== null || submitting}
+        aria-label="Good response"
+        aria-pressed={rating === "up"}
+      >
+        👍
+      </button>
+      <button
+        type="button"
+        className={`feedback-btn${rating === "down" ? " feedback-btn-down-selected" : ""}`}
+        onClick={() => vote("down")}
+        disabled={rating !== null || submitting}
+        aria-label="Bad response"
+        aria-pressed={rating === "down"}
+      >
+        👎
+      </button>
+    </div>
+  );
+}
+
+export default function Message({ role, content, toolCalls, isError, sessionId }) {
   const roleLabel = role === "user" ? "You" : "Assistant";
 
   return (
@@ -35,6 +80,7 @@ export default function Message({ role, content, toolCalls, isError }) {
           content
         )}
       </div>
+      {role === "assistant" && <FeedbackButtons sessionId={sessionId} content={content} />}
     </div>
   );
 }

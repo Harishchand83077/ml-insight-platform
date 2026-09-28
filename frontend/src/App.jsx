@@ -138,7 +138,13 @@ export default function App() {
         )}
 
         {messages.map((m, i) => (
-          <Message key={i} role={m.role} content={m.content} toolCalls={m.toolCalls} />
+          <Message
+            key={i}
+            role={m.role}
+            content={m.content}
+            toolCalls={m.toolCalls}
+            sessionId={sessionId}
+          />
         ))}
 
         {loading && (

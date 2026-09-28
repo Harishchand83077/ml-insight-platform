@@ -5,7 +5,6 @@ as a JSON message to RabbitMQ, one durable queue per event type.
 
 import csv
 import json
-
 import pika
 
 QUEUES = ["login_events", "support_tickets", "feature_usage_logs"]
