@@ -1,18 +1,26 @@
 # Curated runtime dependencies for the FastAPI service (src/serving/api.py
-# and everything it imports: the agent, feature cache, and the subset of
-# train_baseline.py needed for inference). This is a small subset of the
-# full requirements.txt, which is the entire local dev environment
-# (Jupyter, notebook, pytest, ruff, faker, evidently, ...) - none of that
-# is needed to serve requests, so it's deliberately left out of the image.
+# and everything it imports: the agent, feature cache, and
+# src/models/inference.py - deliberately NOT train_baseline.py, which pulls
+# in mlflow/matplotlib/psycopg2-for-training-only and isn't imported by the
+# serving path at all). This is a small subset of the full requirements.txt,
+# which is the entire local dev environment (Jupyter, notebook, pytest,
+# ruff, faker, evidently, mlflow, matplotlib, ...) - none of that is needed
+# to serve requests, so it's deliberately left out of the image.
+#
+# mlflow and matplotlib are intentionally NOT listed here: the model is
+# loaded via skops.io.load() directly (see api.py's load_production_model),
+# not mlflow.sklearn.load_model(), and nothing at serve time plots
+# anything. Both stay in the main requirements.txt for training
+# (train_baseline.py) and are meant to be reintroduced here only if
+# something at serve time actually starts needing them again.
 fastapi==0.141.1
 uvicorn==0.53.0
 pydantic
-mlflow==3.16.1
+skops==0.15.0
 scikit-learn
 xgboost==3.2.0
 pandas==3.0.5
 numpy==2.4.6
-matplotlib==3.11.2
 psycopg2-binary==2.9.13
 redis==8.1.0
 python-dotenv==1.2.3

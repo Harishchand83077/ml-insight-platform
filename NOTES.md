@@ -331,3 +331,6 @@ in our case we are doing 3 jobs in postgres
 1. event store-we ahve login event ,support tickets ,feature usage logs..written by event consumer
 2. feature store -customer_features built by build_features.py in this we simply left join of static customers table with 3 event tables
 3. app tables -auth(auth.py) and feedback.py each keep their small pooled connection to postgres
+
+in our codebase we have src/common/db.py -this is shared helper file and every module directly import this instead of each building it's own connection dict . as get_database_url() return one connection string not a dict as psycopg2 .connect() and pool.SimpleConnectionPool() both accept the same DSN string as their first argument. One code path serves both single-connection and pooled callers.
+it checks both db url and supabase db url and if both not then fallback to building a url from local pg_host/PG_port 

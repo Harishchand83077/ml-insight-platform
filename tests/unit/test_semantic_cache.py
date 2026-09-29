@@ -1,9 +1,14 @@
 """
 Unit tests for src/agent/semantic_cache.py's pure logic (cosine similarity,
 threshold behavior). Redis and the embedding model are both mocked - no
-live Redis, no model download needed.
+live Redis, no model download needed. check_semantic_cache/
+store_in_semantic_cache are async (they await asyncio.to_thread
+internally - see semantic_cache.py's module docstring), so calls to them
+here go through asyncio.run() rather than a full async test framework -
+not worth a pytest-asyncio dependency for two call sites.
 """
 
+import asyncio
 import json
 import math
 from unittest.mock import MagicMock, patch
@@ -66,7 +71,7 @@ class TestThresholdLogic:
         redis_patch, emb_patch, _, _ = _patch_redis_and_embeddings([entry])
 
         with redis_patch, emb_patch:
-            result = semantic_cache.check_semantic_cache("new question")
+            result = asyncio.run(semantic_cache.check_semantic_cache("new question"))
 
         assert result is None
 
@@ -80,7 +85,7 @@ class TestThresholdLogic:
         redis_patch, emb_patch, _, _ = _patch_redis_and_embeddings([entry])
 
         with redis_patch, emb_patch:
-            result = semantic_cache.check_semantic_cache("new question, worded differently")
+            result = asyncio.run(semantic_cache.check_semantic_cache("new question, worded differently"))
 
         assert result == {
             "response": "the cached answer",
@@ -96,7 +101,7 @@ class TestThresholdLogic:
         redis_patch, emb_patch, _, _ = _patch_redis_and_embeddings(entries)
 
         with redis_patch, emb_patch:
-            result = semantic_cache.check_semantic_cache("a question")
+            result = asyncio.run(semantic_cache.check_semantic_cache("a question"))
 
         assert result["response"] == "right match"
 
@@ -104,7 +109,7 @@ class TestThresholdLogic:
         redis_patch, emb_patch, _, fake_embeddings = _patch_redis_and_embeddings([])
 
         with redis_patch, emb_patch:
-            result = semantic_cache.check_semantic_cache("anything")
+            result = asyncio.run(semantic_cache.check_semantic_cache("anything"))
 
         assert result is None
         fake_embeddings.embed_query.assert_not_called()
@@ -118,9 +123,9 @@ class TestStoreInSemanticCache:
 
         with patch.object(semantic_cache, "_get_redis_client", return_value=fake_redis), \
              patch.object(semantic_cache, "get_embedder", return_value=fake_embeddings):
-            semantic_cache.store_in_semantic_cache(
+            asyncio.run(semantic_cache.store_in_semantic_cache(
                 "a new question", "a response", [{"tool": "predict_churn_tool", "args": {}}]
-            )
+            ))
 
         fake_redis.lpush.assert_called_once()
         key, payload = fake_redis.lpush.call_args[0]

@@ -18,8 +18,16 @@ Entries are stored in Redis as a capped list (max 200) under key
 "semantic_cache", each a JSON object: {question, embedding, response,
 tool_calls}. Newest entries are pushed to the head; LTRIM evicts the
 oldest once the cap is reached.
+
+Both public functions are async and run their embed_query() call via
+asyncio.to_thread - that call is CPU-bound (a local sentence-transformers
+forward pass), and api.py's /chat handler is async, so without this it
+would run directly on the event loop. The Redis calls are left
+synchronous (plain redis-py, not aioredis) since they're comparatively
+fast network round trips, not the CPU-bound part this exists to offload.
 """
 
+import asyncio
 import json
 import logging
 
@@ -65,7 +73,7 @@ def _cosine_similarity(a, b):
     return float(np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b)))
 
 
-def check_semantic_cache(question):
+async def check_semantic_cache(question):
     """Returns {"response": str, "tool_calls": list} on a hit above the
     similarity threshold, else None."""
     raw_entries = _get_redis_client().lrange(CACHE_KEY, 0, -1)
@@ -73,7 +81,7 @@ def check_semantic_cache(question):
         SEMANTIC_CACHE_MISS_COUNTER.inc()
         return None
 
-    query_embedding = get_embedder().embed_query(question)
+    query_embedding = await asyncio.to_thread(get_embedder().embed_query, question)
 
     best_score = -1.0
     best_entry = None
@@ -97,9 +105,9 @@ def check_semantic_cache(question):
     return None
 
 
-def store_in_semantic_cache(question, response, tool_calls):
+async def store_in_semantic_cache(question, response, tool_calls):
     r = _get_redis_client()
-    embedding = get_embedder().embed_query(question)
+    embedding = await asyncio.to_thread(get_embedder().embed_query, question)
     entry = json.dumps(
         {"question": question, "embedding": embedding, "response": response, "tool_calls": tool_calls}
     )

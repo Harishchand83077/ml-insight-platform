@@ -1,12 +1,17 @@
 """
 Tools the churn-analytics agent can call.
 
-Prerequisite: the FastAPI serving app must already be running
-(uvicorn src.serving.api:app --reload --port 8000) - predict_churn_tool
-calls it over HTTP rather than importing the model directly, so the agent
-talks to the same serving path a real client would. get_churn_rate_by_column
-and get_customer_count talk to Postgres directly and only need the
-postgres-ml container running.
+predict_churn_tool calls src.serving.prediction.predict_churn() directly,
+in-process - not an HTTP request to this server's own /predict endpoint.
+An earlier version did call over HTTP, which meant either exempting
+/predict from end-user JWT auth for this one caller or minting the agent
+process its own internal credential just to talk to itself; both are
+more moving parts than a function call needs, and the HTTP round trip
+was also quietly loading a second, independent copy of the model into
+memory if it had ever gone through a path that didn't share
+src.common.production_model's single loaded pipeline. get_churn_rate_by_column
+and get_customer_count talk to Postgres directly and only need Supabase
+(or a local Postgres) reachable.
 
 get_churn_rate_by_column and get_customer_count are the "for now" stand-in
 for a natural-language query tool: instead of letting the agent construct
@@ -25,7 +30,6 @@ context chunks, it does not answer the question itself; the agent's LLM
 is responsible for synthesizing an answer from what comes back.
 """
 
-import requests
 from langchain_chroma import Chroma
 from langchain_core.tools import tool
 
@@ -36,6 +40,7 @@ from langchain_core.tools import tool
 try:
     from src.common.db import connect_local
     from src.common.embedding_model import get_embedder
+    from src.serving.prediction import predict_churn
 except ImportError:
     import sys
     from pathlib import Path
@@ -43,8 +48,7 @@ except ImportError:
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
     from src.common.db import connect_local
     from src.common.embedding_model import get_embedder
-
-PREDICT_URL = "http://localhost:8000/predict"
+    from src.serving.prediction import predict_churn
 
 CHROMA_DIR = "data/chroma_db"
 COLLECTION_NAME = "project_docs"
@@ -74,23 +78,31 @@ ALLOWED_COLUMNS = {
 
 @tool
 def predict_churn_tool(customer_id: str) -> str:
-    """Look up a customer's churn risk by calling the churn-prediction API.
+    """Look up a customer's churn risk by running the trained model.
 
     Args:
         customer_id: The customer's ID, e.g. "7590-VHVEG".
     """
     try:
-        response = requests.post(PREDICT_URL, json={"customer_id": customer_id}, timeout=10)
-        response.raise_for_status()
-    except requests.RequestException as e:
-        return f"Error calling prediction API for customer_id '{customer_id}': {e}"
+        result = predict_churn(customer_id)
+    except Exception as e:
+        # A tool that raises breaks the whole agent turn; returning a
+        # string instead lets the LLM relay a clear failure to the user
+        # (e.g. a transient Postgres/Redis error from get_customer_features -
+        # RuntimeError from get_pipeline() shouldn't actually be reachable
+        # here, since /chat already refuses to invoke the agent at all
+        # until model_state["ready"] is True, which is only set after
+        # set_pipeline() has run).
+        return f"Error looking up customer_id '{customer_id}': {e}"
 
-    data = response.json()
+    if result is None:
+        return f"Error: customer_id '{customer_id}' not found"
+
     return (
-        f"customer_id: {data['customer_id']}\n"
-        f"churn_probability: {data['churn_probability']}\n"
-        f"prediction: {data['prediction']}\n"
-        f"cache_hit: {data['cache_hit']}"
+        f"customer_id: {result['customer_id']}\n"
+        f"churn_probability: {result['churn_probability']}\n"
+        f"prediction: {result['prediction']}\n"
+        f"cache_hit: {result['cache_hit']}"
     )
 
 

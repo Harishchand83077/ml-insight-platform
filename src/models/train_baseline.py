@@ -37,6 +37,8 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 from xgboost import XGBClassifier
 
+from src.models.inference import BINARY_YES_NO_COLS, CATEGORICAL_COLS, NUMERIC_COLS
+
 PG_DSN = {
     "host": os.environ.get("PG_HOST", "localhost"),
     "port": os.environ.get("PG_PORT", "5432"),
@@ -48,22 +50,6 @@ PG_DSN = {
 MLFLOW_TRACKING_URI = "sqlite:///mlruns.db"
 EXPERIMENT_NAME = "churn-baseline"
 PLOT_DIR = "data/processed/plots"
-
-CATEGORICAL_COLS = ["contract", "payment_method", "internet_service"]
-BINARY_YES_NO_COLS = ["partner", "dependents"]
-NUMERIC_COLS = [
-    "tenure",
-    "monthly_charges",
-    "senior_citizen",
-    "num_addons_active",
-    "total_logins_90d",
-    "recent_30d_vs_older_60d_ratio",
-    "avg_session_duration_recent_30d",
-    "num_tickets",
-    "pct_unresolved",
-    "avg_resolution_time_hours",
-    "avg_usage_count",
-]
 
 # Positive/negative bars need distinct hues (polarity); magnitude-only bars
 # use a single hue - never a rainbow across categories.
@@ -89,17 +75,6 @@ def load_dataset():
     y = (df["churn"] == "Yes").astype(int)
     X = df[CATEGORICAL_COLS + BINARY_YES_NO_COLS + NUMERIC_COLS]
     return X, y
-
-
-def prepare_model_input(features):
-    """Turn one customer_features row (as returned by get_customer_features,
-    with partner/dependents still "Yes"/"No") into the single-row DataFrame
-    shape the training pipeline was fit on, for serving-time inference."""
-    row = dict(features)
-    row["partner"] = 1 if row["partner"] == "Yes" else 0
-    row["dependents"] = 1 if row["dependents"] == "Yes" else 0
-    columns = CATEGORICAL_COLS + BINARY_YES_NO_COLS + NUMERIC_COLS
-    return pd.DataFrame([{col: row[col] for col in columns}])
 
 
 def build_preprocessor():

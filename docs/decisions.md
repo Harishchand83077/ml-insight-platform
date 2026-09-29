@@ -507,5 +507,62 @@
   start, well before model loading began — Render marked the service 
   live immediately, no more port-scan timeouts on slow model loads.
 
+  ## Feedback loop (Week 9)
 
+- POST /feedback (auth-protected) stores thumbs up/down per assistant 
+  message, tied to user_id and session_id. The rating is validated twice: 
+  Literal["up","down"] at the API layer and a CHECK constraint in the DB.
+- The UI disables voting after one click per message. Verified by 
+  querying Supabase directly with a join back to users, not just by 
+  the 200 response.
+
+
+  ## Production instability under real agent load (Week 9, open)
+
+- Symptom: on Render free tier (0.1 CPU / 512MB), light requests (/predict, 
+  semantic-cache hits) work, but a real /chat agent call sometimes kills 
+  the instance. Render's stated reason: HTTP health check timed out 
+  after 5s.
+- Earlier OOM hypothesis is unconfirmed (Render did not report an OOM). 
+  Candidate causes: blocked event loop, CPU starvation, memory. 
+  Diagnosing by reproducing limits locally (--memory=512m --cpus=0.1) 
+  before changing code.
+- Frontend now treats 502/503/504/timeouts as "server waking up", 
+  polls /health before enabling chat, and preserves input on retryable 
+  failures.
+
+## Root cause confirmed: OOM, not CPU (Week 9)
+
+- Reproduced Render's limits locally (--memory=512m --cpus=0.1). At the 
+  literal limit, the container OOM-killed during startup (never reached 
+  models_ready) after 22m of memory thrashing (497-510MB plateau, block 
+  I/O climbing to 5.38GB from page re-faulting). With headroom (900MB), 
+  idle post-startup baseline was 749MB - 46% over the real 512MB budget, 
+  before serving any request.
+- Separate, independent finding: CPU starvation under a real agent call 
+  (embedding-heavy work) caused /health latency spikes up to a full 
+  timeout, though loop-blocking was ruled out (all handlers are plain 
+  def, correctly threadpooled by Starlette).
+- Fix: reduce baseline memory (mlflow -> direct skops.io load first, 
+  audit serve-time imports; torch/sentence-transformers swap to fastembed 
+  only if still needed) and move embedding calls to asyncio.to_thread to 
+  stop them starving /health under CPU pressure. Two independent fixes 
+  for two independent problems - fixing one doesn't fix the other.
+
+
+## Memory fix validated, real bug found (Week 9)
+
+- Heaviest-case Docker test (two tool calls, 512MB/0.1 CPU): no OOM, no 
+  memory leak across 3 repeated calls (489.7-489.8-489.5 MiB), survived 
+  with ~22MB margin. Some /health latency spikes up to 9.2s persist - 
+  attributed to OS-level CPU quota throttling (cgroup CFS bandwidth), 
+  not something async/threading changes can fully resolve.
+- Decision: stop memory optimization here rather than proceed to the 
+  fastembed/ONNX rewrite - passed its hardest test twice, additional 
+  work carries more risk than the current thin-but-real margin justifies.
+- Found: predict_churn_tool has been calling /predict over HTTP with no 
+  auth token since JWT auth was added - silently broken in production. 
+  Fixing by calling the prediction logic directly in-process instead of 
+  over HTTP (removes an unnecessary network hop and the auth mismatch 
+  entirely).
   

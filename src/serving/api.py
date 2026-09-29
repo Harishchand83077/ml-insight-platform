@@ -2,9 +2,13 @@
 Churn-prediction API: GET /health, POST /auth/signup, POST /auth/login,
 POST /predict, POST /chat, DELETE /chat/{session_id}, POST /feedback, and
 GET /metrics (Prometheus). The XGBoost model (the full preprocessing +
-classifier pipeline, from its MLflow run artifact) is loaded once at
-startup, not per-request. The LangChain agent (src/agent/agent.py) is
-imported once at module load for the same reason.
+classifier pipeline, exported by scripts/export_model_for_deployment.py
+to models/production_model/model.skops - see load_production_model) is
+loaded once at startup, not per-request, via skops.io.load() directly -
+not mlflow, which isn't a serve-time dependency at all (kept in
+requirements.txt for training, dropped from requirements-docker.txt).
+The LangChain agent (src/agent/agent.py) is imported once at module load
+for the same reason.
 
 /predict and /chat require a valid JWT (Authorization: Bearer <token>,
 obtained from /auth/signup or /auth/login) - see src/serving/auth.py for
@@ -29,6 +33,15 @@ feature_cache_requests_total (feature_cache.py), semantic_cache_hits_total
 (semantic_cache.py), and agent_response_seconds (below) - raw HTTP
 latency on /chat wouldn't distinguish a semantic-cache-hit response
 (near-instant) from a real agent call (LLM + tool round trips).
+
+/chat is the one `async def` handler (every other route is plain `def`,
+which FastAPI dispatches to a worker thread automatically - see each
+handler's own comments for why that's fine for them). /chat needs to be
+async so its embedding calls (via semantic_cache.py) can genuinely be
+awaited off the event loop via asyncio.to_thread, matching the pattern
+_load_models uses at startup - see that async-ness's own comment, right
+above where it's declared, for what that then requires of every other
+blocking call made directly in this handler.
 """
 
 import asyncio
@@ -37,8 +50,7 @@ from contextlib import asynccontextmanager
 from typing import Literal
 
 import groq
-import mlflow
-import mlflow.sklearn
+import skops.io
 import torch
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -51,7 +63,7 @@ from pydantic import BaseModel, constr
 from src.agent.agent import agent as churn_agent
 from src.agent.semantic_cache import check_semantic_cache, store_in_semantic_cache
 from src.common.embedding_model import EMBEDDING_MODEL_NAME, set_embedder
-from src.models.train_baseline import prepare_model_input
+from src.common.production_model import set_pipeline
 from src.serving.auth import (
     EmailAlreadyExistsError,
     create_access_token,
@@ -62,8 +74,8 @@ from src.serving.auth import (
     log_audit,
     verify_password,
 )
-from src.serving.feature_cache import get_customer_features
 from src.serving.feedback import store_feedback
+from src.serving.prediction import predict_churn
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("api")
@@ -80,19 +92,24 @@ model_state = {}
 _startup_task = None  # holds a strong reference - see lifespan()
 
 
-PRODUCTION_MODEL_DIR = "models/production_model"
+PRODUCTION_MODEL_PATH = "models/production_model/model.skops"
+# Must match scripts/export_model_for_deployment.py's save_model call (see
+# models/production_model/MLmodel's own skops_trusted_types field, which
+# records the same list) - the pipeline's XGBoost step won't deserialize
+# without skops being told these specific types are safe to unpickle.
+PRODUCTION_MODEL_TRUSTED_TYPES = ["xgboost.core.Booster", "xgboost.sklearn.XGBClassifier"]
 
 
 def load_production_model():
-    """Loads the XGBoost pipeline directly from models/production_model/ -
-    a plain local MLflow model directory produced by
-    scripts/export_model_for_deployment.py - instead of querying the
-    MLflow tracking store (sqlite:///mlruns.db) at startup. That store is
-    dev-time experiment history and isn't shipped with the deployed image;
-    to ship a new model, re-run the export script and commit the updated
-    models/production_model/."""
-    pipeline = mlflow.sklearn.load_model(PRODUCTION_MODEL_DIR)
-    logger.info("Loaded xgboost model from %s", PRODUCTION_MODEL_DIR)
+    """Loads the XGBoost pipeline directly from
+    models/production_model/model.skops via skops.io.load() - the same
+    file mlflow.sklearn.load_model() used to read (mlflow's sklearn/skops
+    flavor is a thin wrapper around this exact call), but without needing
+    mlflow itself installed just to load one file at serve time. Produced
+    by scripts/export_model_for_deployment.py; to ship a new model, re-run
+    that script and commit the updated models/production_model/."""
+    pipeline = skops.io.load(PRODUCTION_MODEL_PATH, trusted=PRODUCTION_MODEL_TRUSTED_TYPES)
+    logger.info("Loaded xgboost model from %s", PRODUCTION_MODEL_PATH)
     return pipeline
 
 
@@ -107,7 +124,7 @@ def load_embedder():
 
 async def _load_models():
     """Runs as a background task, not awaited by lifespan - both loaders
-    are blocking calls (mlflow.sklearn.load_model does file I/O;
+    are blocking calls (skops.io.load does file I/O;
     HuggingFaceEmbeddings does a network round trip to the HF Hub even
     when the model is already cached locally - see load_embedder's
     docstring), so each runs in a worker thread via asyncio.to_thread
@@ -117,6 +134,7 @@ async def _load_models():
     with everything else."""
     try:
         model_state["pipeline"] = await asyncio.to_thread(load_production_model)
+        set_pipeline(model_state["pipeline"])
         model_state["embedder"] = await asyncio.to_thread(load_embedder)
         set_embedder(model_state["embedder"])
         model_state["ready"] = True
@@ -252,28 +270,35 @@ def predict(req: PredictRequest, current_user: dict = Depends(get_current_user))
 
     log_audit(current_user["id"], "/predict", req.customer_id)
 
-    features, cache_hit = get_customer_features(req.customer_id)
-    if features is None:
+    result = predict_churn(req.customer_id)
+    if result is None:
         raise HTTPException(status_code=404, detail=f"customer_id '{req.customer_id}' not found")
 
-    X = prepare_model_input(features)
-    churn_probability = float(model_state["pipeline"].predict_proba(X)[0, 1])
-    prediction = "Yes" if churn_probability >= 0.5 else "No"
-
-    return {
-        "customer_id": req.customer_id,
-        "churn_probability": round(churn_probability, 4),
-        "prediction": prediction,
-        "cache_hit": cache_hit,
-    }
+    return result
 
 
 @app.post("/chat")
-def chat(req: ChatRequest, current_user: dict = Depends(get_current_user)):
+async def chat(req: ChatRequest, current_user: dict = Depends(get_current_user)):
     if not model_state.get("ready", False):
         raise HTTPException(status_code=503, detail="Models still loading, please retry shortly")
 
-    log_audit(current_user["id"], "/chat", req.message)
+    # This handler is async so the embedding calls inside check_semantic_cache/
+    # store_in_semantic_cache (both async, awaiting asyncio.to_thread
+    # internally - see semantic_cache.py) can actually be awaited rather than
+    # running directly on the event loop. That makes every OTHER blocking
+    # call made directly in this function - not FastAPI dependencies like
+    # get_current_user, which FastAPI already threadpools automatically -
+    # something that now needs the same treatment, or it'd be worse off than
+    # before: log_audit (a psycopg2 call) and churn_agent.invoke() (an LLM
+    # call plus, when the agent uses query_project_docs_tool, the RAG
+    # retrieval step) are both wrapped in asyncio.to_thread below for exactly
+    # this reason. query_project_docs_tool itself can't be made async - its
+    # @tool decorator requires sync invocation when bound to this agent's
+    # sync-only tool-calling path (verified directly: an async tool raises
+    # "StructuredTool does not support sync invocation" here) - so
+    # offloading the whole invoke() call is what actually keeps its
+    # retrieval step off the loop, not a wrap inside the tool itself.
+    await asyncio.to_thread(log_audit, current_user["id"], "/chat", req.message)
 
     session_key = (current_user["id"], req.session_id)
     previous_messages = chat_sessions.get(session_key, [])
@@ -283,7 +308,7 @@ def chat(req: ChatRequest, current_user: dict = Depends(get_current_user)):
     # same question mid-conversation can mean something different given
     # prior context, so it's only safe to short-circuit on a fresh session.
     if is_first_message:
-        cached = check_semantic_cache(req.message)
+        cached = await check_semantic_cache(req.message)
         if cached is not None:
             chat_sessions[session_key] = [
                 {"role": "user", "content": req.message},
@@ -299,7 +324,7 @@ def chat(req: ChatRequest, current_user: dict = Depends(get_current_user)):
 
     try:
         with AGENT_RESPONSE_TIME.time():
-            result = churn_agent.invoke({"messages": input_messages})
+            result = await asyncio.to_thread(churn_agent.invoke, {"messages": input_messages})
     except groq.APIStatusError as e:
         if e.status_code in GROQ_RATE_LIMIT_STATUS_CODES:
             logger.warning("Groq rate-limited this request (status %s): %s", e.status_code, e.message)
@@ -324,7 +349,7 @@ def chat(req: ChatRequest, current_user: dict = Depends(get_current_user)):
     response_text = new_messages[-1].content if new_messages else ""
 
     if is_first_message:
-        store_in_semantic_cache(req.message, response_text, tool_calls)
+        await store_in_semantic_cache(req.message, response_text, tool_calls)
 
     return {
         "session_id": req.session_id,
