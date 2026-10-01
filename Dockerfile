@@ -37,6 +37,29 @@ COPY src/ src/
 # tracking store itself (mlruns.db/mlruns/) is dev-only and never shipped.
 COPY models/production_model/ models/production_model/
 
+# Build the RAG knowledge base (the Chroma vector index query_project_docs_tool
+# reads) at image-build time, not on the container's first request - same
+# build-time-not-runtime principle as the embedding-model pre-download
+# above, and the actual fix for a real production gap: this step didn't
+# exist before, so query_project_docs_tool silently had no index to query
+# in every deployed container (data/ is .dockerignore'd, and nothing ever
+# ran build_knowledge_base.py in the image - it always returned "No
+# relevant context found", no error, no indication anything was wrong).
+# docs/ is copied in just for this step; nothing at serve time reads
+# docs/ directly, only the data/chroma_db/ index this produces.
+COPY docs/ docs/
+RUN python src/agent/build_knowledge_base.py
+
+# Fail the build - not just at runtime - if the index wasn't actually
+# produced. A build that silently ships an empty or missing index would
+# otherwise look identical to a working one right up until the first real
+# RAG query in production came back empty, which is exactly the failure
+# mode this build step exists to catch. 50 is comfortably below the 128
+# chunks the current 13 source docs produce, leaving room for future doc
+# edits without this check becoming the thing that breaks on a harmless
+# content change.
+RUN python -c "import chromadb; c = chromadb.PersistentClient(path='data/chroma_db').get_collection('project_docs'); n = c.count(); print(f'RAG index check: {n} chunks in project_docs'); assert n >= 50, f'expected at least 50 chunks, got {n}'"
+
 EXPOSE 8000
 
 # Render (and most PaaS Docker hosts) require the app to bind to the $PORT

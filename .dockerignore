@@ -1,7 +1,15 @@
 venv/
 frontend/
 node_modules/
+# Raw/processed/synthetic data and any locally-built Chroma index are
+# dev-only and excluded - but the image builds its own fresh index at
+# docs/knowledge_base/ build time (see the Dockerfile's
+# build_knowledge_base.py step) and writes it to this same data/chroma_db/
+# path via a RUN step inside the container, not via COPY from the host,
+# so this exclusion never applies to it. The negation below exists only
+# so that stays true even if a future `COPY data/ data/` is ever added.
 data/
+!data/chroma_db
 mlruns/
 mlruns.db
 notebooks/
@@ -14,3 +22,6 @@ __pycache__/
 *.pyc
 .env
 *.log
+# docs/ is deliberately NOT excluded - the Dockerfile's
+# build_knowledge_base.py build step needs docs/glossary.md,
+# docs/decisions.md, and docs/knowledge_base/*.md to build the RAG index.

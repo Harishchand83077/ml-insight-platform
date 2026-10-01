@@ -565,4 +565,17 @@
   Fixing by calling the prediction logic directly in-process instead of 
   over HTTP (removes an unnecessary network hop and the auth mismatch 
   entirely).
-  
+
+
+  ## predict_churn_tool auth bug fixed (Week 9)
+
+- Fixed: predict_churn_tool called /predict over HTTP with no JWT, 
+  broken since auth was added - every agent churn-risk question failed 
+  silently. Fixed by calling prediction logic in-process 
+  (src/serving/prediction.py) instead of over HTTP, via a shared leaf 
+  module (src/common/production_model.py) - same pattern used for the 
+  embedder fix, avoids both the auth mismatch and an unnecessary network 
+  hop.
+- Verified live: agent question for a real customer_id returns a real 
+  prediction with tool_calls confirming predict_churn_tool executed.
+

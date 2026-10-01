@@ -25,10 +25,15 @@ through psycopg2 as query parameters, never string-interpolated.
 
 query_project_docs_tool retrieves from the local Chroma vector store built
 by build_knowledge_base.py (run that script first, and re-run it if
-docs/glossary.md or docs/decisions.md change) - it only retrieves raw
-context chunks, it does not answer the question itself; the agent's LLM
-is responsible for synthesizing an answer from what comes back.
+docs/glossary.md, docs/decisions.md, or anything under
+docs/knowledge_base/ changes) - it only retrieves raw context chunks,
+labeled with a "source.md > Section" citation built from each chunk's
+metadata, it does not answer the question itself; the agent's LLM is
+responsible for synthesizing an answer from what comes back, citing
+those labels per SYSTEM_PROMPT's instructions.
 """
+
+from pathlib import Path
 
 from langchain_chroma import Chroma
 from langchain_core.tools import tool
@@ -43,7 +48,6 @@ try:
     from src.serving.prediction import predict_churn
 except ImportError:
     import sys
-    from pathlib import Path
 
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
     from src.common.db import connect_local
@@ -201,13 +205,19 @@ def _get_vectorstore():
 @tool
 def query_project_docs_tool(question: str) -> str:
     """Retrieve relevant context about this project's methodology, metric
-    definitions, or design decisions (e.g. why PR-AUC over accuracy, what
-    num_addons_active means, the data leakage issue and fix). Returns raw
-    context chunks for you to synthesize an answer from - it does not
-    answer the question itself.
+    definitions, design decisions (e.g. why PR-AUC over accuracy, what
+    num_addons_active means, the data leakage issue and fix), or about
+    Vantrix's (the fictional telecom company this project models)
+    policies - refunds/cancellation, contract terms and early termination
+    fees, support SLA, fiber pricing/promotions, autopay/payment
+    handling, retention playbooks, the churn model's model card, or the
+    customer_features data dictionary. Returns raw context chunks for you
+    to synthesize an answer from, each labeled with its source file and
+    section - it does not answer the question itself.
 
     Args:
-        question: A natural-language question about the project.
+        question: A natural-language question about the project or about
+            Vantrix's policies.
     """
     vectorstore = _get_vectorstore()
     results = vectorstore.similarity_search(question, k=3)
@@ -216,7 +226,9 @@ def query_project_docs_tool(question: str) -> str:
         return "No relevant context found in the project docs."
 
     chunks = []
-    for i, doc in enumerate(results, start=1):
-        source = doc.metadata.get("source", "unknown")
-        chunks.append(f"[Context {i} - source: {source}]\n{doc.page_content}")
+    for doc in results:
+        source = Path(doc.metadata.get("source", "unknown")).name
+        section = doc.metadata.get("section")
+        label = f"{source} > {section}" if section else source
+        chunks.append(f"[source: {label}]\n{doc.page_content}")
     return "\n\n".join(chunks)

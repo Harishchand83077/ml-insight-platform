@@ -1,0 +1,22 @@
+artifact_path: file:///C:/Users/Mi/OneDrive/Desktop/ml-insight-platform/mlruns/1/models/m-c31bb6f8107f451da83ca5e6d007b236/artifacts
+flavors:
+  python_function:
+    data: model.ubj
+    env:
+      conda: conda.yaml
+      virtualenv: python_env.yaml
+    loader_module: mlflow.xgboost
+    python_version: 3.11.9
+  xgboost:
+    code: null
+    data: model.ubj
+    model_class: xgboost.sklearn.XGBClassifier
+    model_format: ubj
+    xgb_version: 3.2.0
+mlflow_version: 3.16.1
+model_id: m-c31bb6f8107f451da83ca5e6d007b236
+model_size_bytes: 313137
+model_uuid: m-c31bb6f8107f451da83ca5e6d007b236
+prompts: null
+run_id: 72ffc9650e334cf4ba30072d85ecc7c6
+utc_time_created: '2026-09-20 12:20:52.855105'
