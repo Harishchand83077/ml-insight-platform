@@ -60,6 +60,7 @@ from langchain_core.tools import tool
 try:
     from src.common.db import connect_local
     from src.common.embedding_model import get_embedder
+    from src.serving.explain import explain_prediction
     from src.serving.prediction import predict_churn
 except ImportError:
     import sys
@@ -67,6 +68,7 @@ except ImportError:
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
     from src.common.db import connect_local
     from src.common.embedding_model import get_embedder
+    from src.serving.explain import explain_prediction
     from src.serving.prediction import predict_churn
 
 CHROMA_DIR = "data/chroma_db"
@@ -123,6 +125,43 @@ def predict_churn_tool(customer_id: str) -> str:
         f"prediction: {result['prediction']}\n"
         f"cache_hit: {result['cache_hit']}"
     )
+
+
+@tool
+def explain_churn_tool(customer_id: str) -> str:
+    """List the features that moved a specific customer's predicted churn risk
+    up or down the most, as statistical contributions from the trained model.
+    These describe the model's output, not causes of customer behavior. Use
+    this when asked why a customer is at risk, not just what their risk is.
+
+    Args:
+        customer_id: The customer's ID, e.g. "7590-VHVEG".
+    """
+    try:
+        result = explain_prediction(customer_id)
+    except Exception as e:
+        return f"Error explaining customer_id '{customer_id}': {e}"
+
+    if result is None:
+        return f"Error: customer_id '{customer_id}' not found"
+
+    lines = [
+        f"customer_id: {result['customer_id']}",
+        f"churn_probability: {result['churn_probability']}",
+        "Contributions are log-odds units from the model: a positive value increased the predicted",
+        "churn risk, a negative value decreased it. Baseline plus all contributions equals the model's score.",
+        f"Baseline log-odds (average customer): {result['base_log_odds']}",
+        "Top drivers, largest first:",
+    ]
+    for item in result["top_features"]:
+        lines.append(
+            f"- {item['feature']}={item['value']}: {item['log_odds']:+.4f} ({item['direction']})"
+        )
+    lines.append(
+        "Report only these numbers and their direction. Do not give reasons, motivations, "
+        "or emotional interpretations for any feature."
+    )
+    return "\n".join(lines)
 
 
 @tool

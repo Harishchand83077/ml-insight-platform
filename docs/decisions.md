@@ -648,3 +648,37 @@
   SimpleConnectionPool, and the JWT secret lookup to raise if touched 
   during import - confirms the fix at the mechanism level, not just by 
   absence of an error.
+
+
+  ## Explainability tool (Week 9)
+
+- Built explain_churn_tool (top-5 SHAP-equivalent feature contributions 
+  per prediction). Initially used shap.TreeExplainer; measured it adding 
+  ~64MB on first call on top of an already-tight 512MB budget - switched 
+  to XGBoost's native booster.predict(pred_contribs=True), which gives 
+  identical values (verified: max difference 0.0) with no new dependency 
+  and no extra memory cost.
+- Found and fixed a correctness issue: the LLM's narration added 
+  unsupported causal/emotional language ("frustrated customers") not 
+  justified by the contribution values, which are associational, not 
+  causal. Constrained the system prompt to factual framing only.
+- Contributions are in log-odds units, additive across features 
+  (verified against the model's raw margin to 1.7e-5) - not directly 
+  interpretable as "probability points."
+
+
+  ## Explainability tool, finalized (Week 9)
+
+- Switched shap.TreeExplainer -> XGBoost native booster.predict(pred_contribs=True): 
+  identical values (max diff 0.0 across all features/totals/base on both 
+  test customers), memory impact 64MB -> 2.8MB, cold-start latency 5.4s -> 322ms, 
+  warm median 52ms (dominated by Redis lookup, not computation).
+- Narration constrained to factual framing via system prompt; verified on 
+  fresh (non-cached) test questions - speculative causal language 
+  ("frustrated", "higher expectations") eliminated on tested inputs. 
+  Caveat: this is prompt-level guidance, not a hard guarantee - could 
+  still drift on untested phrasings.
+- Caught own testing error mid-verification: initial "fix confirmed" 
+  re-test was actually a semantic cache hit returning pre-fix cached 
+  text, not fresh output - re-tested with varied wording before trusting 
+  the result.

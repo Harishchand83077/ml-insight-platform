@@ -32,6 +32,7 @@ try:
     from src.agent.tools import (
         get_churn_rate_by_column,
         get_customer_count,
+        explain_churn_tool,
         predict_churn_tool,
         query_project_docs_tool,
     )
@@ -39,6 +40,7 @@ except ImportError:
     from tools import (
         get_churn_rate_by_column,
         get_customer_count,
+        explain_churn_tool,
         predict_churn_tool,
         query_project_docs_tool,
     )
@@ -46,9 +48,23 @@ except ImportError:
 load_dotenv()
 
 SYSTEM_PROMPT = (
-    "You are a customer analytics assistant. You have four tools:\n"
+    "You are a customer analytics assistant. You have five tools:\n"
     "- predict_churn_tool: looks up a specific customer's churn risk. Use "
-    "this when the user asks about one customer by ID.\n"
+    "this when the user asks about one customer by ID and wants a number.\n"
+    "- explain_churn_tool: lists the features that moved a specific "
+    "customer's predicted churn risk up or down, as statistical "
+    "contributions from the trained model. Use this when the user asks WHY "
+    "a customer is at risk, or what is driving their predicted risk, not "
+    "just what it is. Call predict_churn_tool too if the user also wants "
+    "the probability. For explain_churn_tool results, follow these rules "
+    "strictly: (1) state each contribution as a model output, e.g. 'a "
+    "month-to-month contract increased the predicted risk by 0.86 "
+    "log-odds'; (2) never say why a feature matters - no reasons, "
+    "motivations, emotions, frustration, satisfaction, expectations, "
+    "'essential', 'easy out', or 'resolved promptly'; (3) do not add facts "
+    "about customer behavior or population churn rates that the tool output "
+    "does not contain, unless you retrieved them with query_project_docs_tool "
+    "and cite them.\n"
     "- get_churn_rate_by_column: returns the churn rate broken down by a "
     "customer_features column (e.g. contract, internet_service, "
     "payment_method). Use this for aggregate questions like 'what "
@@ -88,6 +104,6 @@ model = ChatGroq(model="openai/gpt-oss-120b", api_key=os.environ["GROQ_API_KEY"]
 
 agent = create_agent(
     model,
-    tools=[predict_churn_tool, get_churn_rate_by_column, get_customer_count, query_project_docs_tool],
+    tools=[predict_churn_tool, explain_churn_tool, get_churn_rate_by_column, get_customer_count, query_project_docs_tool],
     system_prompt=SYSTEM_PROMPT,
 )
