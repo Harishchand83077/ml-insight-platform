@@ -58,18 +58,28 @@ logger = logging.getLogger("auth")
 JWT_ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_SECONDS = 60 * 60 * 24  # 24h
 
-JWT_SECRET_KEY = os.environ.get("JWT_SECRET_KEY")
-if not JWT_SECRET_KEY:
-    raise RuntimeError(
-        "JWT_SECRET_KEY is not set. Add it to your .env (see .env.example) - "
-        "generate one with: python -c \"import secrets; print(secrets.token_hex(32))\""
-    )
+def _get_jwt_secret() -> str:
+    secret = os.environ.get("JWT_SECRET_KEY")
+    if not secret:
+        raise RuntimeError(
+            "JWT_SECRET_KEY is not set. Add it to your .env (see .env.example) - "
+            "generate one with: python -c \"import secrets; print(secrets.token_hex(32))\""
+        )
+    return secret
+
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 POOL_MIN_CONN = 1
 POOL_MAX_CONN = 20
-_pg_pool = psycopg2.pool.SimpleConnectionPool(POOL_MIN_CONN, POOL_MAX_CONN, get_database_url())
+_pg_pool = None
+
+
+def _get_pool():
+    global _pg_pool
+    if _pg_pool is None:
+        _pg_pool = psycopg2.pool.SimpleConnectionPool(POOL_MIN_CONN, POOL_MAX_CONN, get_database_url())
+    return _pg_pool
 
 # HTTPBearer's default auto_error=True raises 403 (not 401) when the
 # Authorization header is missing entirely - auto_error=False here, with
@@ -93,12 +103,13 @@ def verify_password(password: str, hashed_password: str) -> bool:
 def create_access_token(user_id: str, email: str) -> str:
     now = int(time.time())
     payload = {"sub": user_id, "email": email, "iat": now, "exp": now + ACCESS_TOKEN_EXPIRE_SECONDS}
-    return jwt.encode(payload, JWT_SECRET_KEY, algorithm=JWT_ALGORITHM)
+    return jwt.encode(payload, _get_jwt_secret(), algorithm=JWT_ALGORITHM)
 
 
 def create_user(email: str, hashed_password: str) -> dict:
     user_id = str(uuid.uuid4())
-    conn = _pg_pool.getconn()
+    pool = _get_pool()
+    conn = pool.getconn()
     try:
         with conn.cursor() as cur:
             try:
@@ -113,31 +124,33 @@ def create_user(email: str, hashed_password: str) -> dict:
             row = cur.fetchone()
         conn.commit()
     finally:
-        _pg_pool.putconn(conn)
+        pool.putconn(conn)
     return {"id": str(row[0]), "email": row[1], "created_at": row[2]}
 
 
 def get_user_by_email(email: str) -> dict | None:
-    conn = _pg_pool.getconn()
+    pool = _get_pool()
+    conn = pool.getconn()
     try:
         with conn.cursor() as cur:
             cur.execute("SELECT id, email, hashed_password FROM users WHERE email = %s", (email,))
             row = cur.fetchone()
     finally:
-        _pg_pool.putconn(conn)
+        pool.putconn(conn)
     if row is None:
         return None
     return {"id": str(row[0]), "email": row[1], "hashed_password": row[2]}
 
 
 def get_user_by_id(user_id: str) -> dict | None:
-    conn = _pg_pool.getconn()
+    pool = _get_pool()
+    conn = pool.getconn()
     try:
         with conn.cursor() as cur:
             cur.execute("SELECT id, email FROM users WHERE id = %s", (user_id,))
             row = cur.fetchone()
     finally:
-        _pg_pool.putconn(conn)
+        pool.putconn(conn)
     if row is None:
         return None
     return {"id": str(row[0]), "email": row[1]}
@@ -148,7 +161,7 @@ def get_current_user(credentials: HTTPAuthorizationCredentials | None = Depends(
         raise HTTPException(status_code=401, detail="Not authenticated")
 
     try:
-        payload = jwt.decode(credentials.credentials, JWT_SECRET_KEY, algorithms=[JWT_ALGORITHM])
+        payload = jwt.decode(credentials.credentials, _get_jwt_secret(), algorithms=[JWT_ALGORITHM])
     except jwt.PyJWTError:
         raise HTTPException(status_code=401, detail="Invalid or expired token") from None
 
@@ -167,7 +180,8 @@ def log_audit(user_id: str, endpoint: str, request_summary: str) -> None:
     truncated = (request_summary or "")[:REQUEST_SUMMARY_MAX_LEN]
     conn = None
     try:
-        conn = _pg_pool.getconn()
+        pool = _get_pool()
+        conn = pool.getconn()
         with conn.cursor() as cur:
             cur.execute(
                 "INSERT INTO audit_logs (user_id, endpoint, request_summary) VALUES (%s, %s, %s)",
@@ -178,4 +192,4 @@ def log_audit(user_id: str, endpoint: str, request_summary: str) -> None:
         logger.warning("Failed to write audit log for user=%s endpoint=%s", user_id, endpoint, exc_info=True)
     finally:
         if conn is not None:
-            _pg_pool.putconn(conn)
+            pool.putconn(conn)

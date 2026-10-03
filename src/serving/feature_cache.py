@@ -45,7 +45,15 @@ POOL_MAX_CONN = 20
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("feature_cache")
 
-_pg_pool = psycopg2.pool.SimpleConnectionPool(POOL_MIN_CONN, POOL_MAX_CONN, get_database_url())
+_pg_pool = None
+
+
+def _get_pool():
+    global _pg_pool
+    if _pg_pool is None:
+        _pg_pool = psycopg2.pool.SimpleConnectionPool(POOL_MIN_CONN, POOL_MAX_CONN, get_database_url())
+    return _pg_pool
+
 
 FEATURE_CACHE_COUNTER = Counter(
     "feature_cache_requests_total",
@@ -67,13 +75,14 @@ def get_customer_features(customer_id):
 
     logger.info("Cache MISS for %s", customer_id)
     FEATURE_CACHE_COUNTER.labels(result="miss").inc()
-    conn = _pg_pool.getconn()
+    pool = _get_pool()
+    conn = pool.getconn()
     try:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute("SELECT * FROM customer_features WHERE customer_id = %s", (customer_id,))
             row = cur.fetchone()
     finally:
-        _pg_pool.putconn(conn)
+        pool.putconn(conn)
 
     if row is None:
         return None, False

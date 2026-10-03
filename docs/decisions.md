@@ -621,3 +621,30 @@
   gains on a minority of exact-term queries. Hybrid module kept, 
   documented, unused - a real option if the corpus or query mix changes.
 
+## CI broken by eager DB connection, fixed (Week 9)
+
+- The predict_churn_tool in-process fix introduced a new import chain 
+  (tools.py -> prediction.py -> feature_cache.py) that connects to 
+  Postgres at module import time, breaking CI (no DB available there) 
+  even though local/production both have real DB access.
+- Fixed: feature_cache.py's connection pool is now lazily initialized 
+  on first use, matching the pattern already used for the embedder and 
+  model singletons - importing the module no longer requires a live DB.
+
+  ## Import-time environment dependencies fixed across the board (Week 9)
+
+- Found the same bug pattern in three places: feature_cache.py, auth.py, 
+  and feedback.py all created their Postgres pool at module import time, 
+  plus auth.py raised at import if JWT_SECRET_KEY was unset. Anything 
+  importing these modules - including CI's test collection - required 
+  live DB access and a real secret just to import, not just to actually 
+  use them.
+- Fixed: all three pools and the JWT secret check are now lazy, created/
+  validated on first real use, matching the pattern already used for the 
+  embedder and model singletons. Importing any of these modules now 
+  requires nothing; using them still fails clearly if the real 
+  dependency (DB, secret) is missing.
+- Verified with a strict check that patches psycopg2.connect, 
+  SimpleConnectionPool, and the JWT secret lookup to raise if touched 
+  during import - confirms the fix at the mechanism level, not just by 
+  absence of an error.

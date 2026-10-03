@@ -21,14 +21,22 @@ except ImportError:
 
 POOL_MIN_CONN = 1
 POOL_MAX_CONN = 5
-_pg_pool = psycopg2.pool.SimpleConnectionPool(POOL_MIN_CONN, POOL_MAX_CONN, get_database_url())
+_pg_pool = None
+
+
+def _get_pool():
+    global _pg_pool
+    if _pg_pool is None:
+        _pg_pool = psycopg2.pool.SimpleConnectionPool(POOL_MIN_CONN, POOL_MAX_CONN, get_database_url())
+    return _pg_pool
 
 MESSAGE_CONTENT_MAX_LEN = 1000
 
 
 def store_feedback(user_id: str, session_id: str, message_content: str, rating: str) -> None:
     truncated = (message_content or "")[:MESSAGE_CONTENT_MAX_LEN]
-    conn = _pg_pool.getconn()
+    pool = _get_pool()
+    conn = pool.getconn()
     try:
         with conn.cursor() as cur:
             cur.execute(
@@ -38,4 +46,4 @@ def store_feedback(user_id: str, session_id: str, message_content: str, rating: 
             )
         conn.commit()
     finally:
-        _pg_pool.putconn(conn)
+        pool.putconn(conn)
