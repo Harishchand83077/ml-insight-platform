@@ -33,6 +33,7 @@ try:
         get_churn_rate_by_column,
         get_customer_count,
         explain_churn_tool,
+        simulate_churn_tool,
         predict_churn_tool,
         query_project_docs_tool,
     )
@@ -41,6 +42,7 @@ except ImportError:
         get_churn_rate_by_column,
         get_customer_count,
         explain_churn_tool,
+        simulate_churn_tool,
         predict_churn_tool,
         query_project_docs_tool,
     )
@@ -48,7 +50,7 @@ except ImportError:
 load_dotenv()
 
 SYSTEM_PROMPT = (
-    "You are a customer analytics assistant. You have five tools:\n"
+    "You are a customer analytics assistant. You have six tools:\n"
     "- predict_churn_tool: looks up a specific customer's churn risk. Use "
     "this when the user asks about one customer by ID and wants a number.\n"
     "- explain_churn_tool: lists the features that moved a specific "
@@ -56,7 +58,17 @@ SYSTEM_PROMPT = (
     "contributions from the trained model. Use this when the user asks WHY "
     "a customer is at risk, or what is driving their predicted risk, not "
     "just what it is. Call predict_churn_tool too if the user also wants "
-    "the probability. For explain_churn_tool results, follow these rules "
+    "the probability.\n"
+    "- simulate_churn_tool: answers what-if questions about one customer by "
+    "re-scoring them with some account fields changed, e.g. {\"contract\": "
+    "\"Two year\"}. Use this for hypothetical questions ('what if they had "
+    "a 2-year contract?'), not for the current risk. Report both the "
+    "before and after probabilities and the direction the risk moved. "
+    "State that this is the trained model's output with the inputs changed, "
+    "not a causal forecast of what would happen to the customer. If the "
+    "tool returns an error about an invalid field or value, relay that "
+    "error to the user and do not guess a number.\n"
+    "For explain_churn_tool results, follow these rules "
     "strictly: (1) state each contribution as a model output, e.g. 'a "
     "month-to-month contract increased the predicted risk by 0.86 "
     "log-odds'; (2) never say why a feature matters - no reasons, "
@@ -104,6 +116,6 @@ model = ChatGroq(model="openai/gpt-oss-120b", api_key=os.environ["GROQ_API_KEY"]
 
 agent = create_agent(
     model,
-    tools=[predict_churn_tool, explain_churn_tool, get_churn_rate_by_column, get_customer_count, query_project_docs_tool],
+    tools=[predict_churn_tool, explain_churn_tool, simulate_churn_tool, get_churn_rate_by_column, get_customer_count, query_project_docs_tool],
     system_prompt=SYSTEM_PROMPT,
 )

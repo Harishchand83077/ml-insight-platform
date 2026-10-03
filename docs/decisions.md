@@ -682,3 +682,24 @@
   re-test was actually a semantic cache hit returning pre-fix cached 
   text, not fresh output - re-tested with varied wording before trusting 
   the result.
+
+
+  ## What-if tool (Week 9)
+
+- simulate_churn_tool: re-scores a customer with overridden account-level 
+  fields (contract, payment method, etc. - not behavioral event features, 
+  which aren't user-controllable inputs). Validates against observed 
+  training ranges/allowed values before any model call - rejects 
+  nonsense inputs (invalid category, out-of-range numeric, wrong type) 
+  with a clear error instead of a silent bad prediction.
+- Verified: 2691-NZETQ's risk drops 0.9989->0.9415 on a hypothetical 
+  2-year contract switch, direction consistent with known EDA (month-to-
+  month 42.7% vs two-year 2.8% churn) - the modest size of the drop makes 
+  sense given this customer's score is dominated by a different feature 
+  (unresolved ticket time), a good example of why single-feature 
+  counterfactuals don't always move risk as much as intuition suggests.
+- Testing gap found twice now: semantic cache silently invalidates 
+  "verification" done through near-identical /chat questions. Added 
+  [cache bypass mechanism] to prevent a third recurrence.
+
+  

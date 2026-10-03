@@ -45,14 +45,16 @@ blocking call made directly in this handler.
 """
 
 import asyncio
+import hmac
 import logging
+import os
 from contextlib import asynccontextmanager
 from typing import Literal
 
 import groq
 import skops.io
 import torch
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from langchain_huggingface import HuggingFaceEmbeddings
@@ -277,8 +279,28 @@ def predict(req: PredictRequest, current_user: dict = Depends(get_current_user))
     return result
 
 
+# Test-only switch to skip the semantic cache. Off unless CACHE_BYPASS_TOKEN is
+# set on the server; a request must send the same value in X-Cache-Bypass.
+# Ordinary users can't reach it without the secret, so it can't be used to
+# burn Groq quota. A wrong token is a 403, not a silent fallback, so a
+# misconfigured test fails loudly.
+CACHE_BYPASS_TOKEN = os.environ.get("CACHE_BYPASS_TOKEN", "")
+
+
+def _cache_bypass_requested(header_value):
+    if header_value is None:
+        return False
+    if not CACHE_BYPASS_TOKEN or not hmac.compare_digest(header_value, CACHE_BYPASS_TOKEN):
+        raise HTTPException(status_code=403, detail="Invalid cache-bypass token")
+    return True
+
+
 @app.post("/chat")
-async def chat(req: ChatRequest, current_user: dict = Depends(get_current_user)):
+async def chat(
+    req: ChatRequest,
+    current_user: dict = Depends(get_current_user),
+    x_cache_bypass: str | None = Header(default=None, alias="X-Cache-Bypass"),
+):
     if not model_state.get("ready", False):
         raise HTTPException(status_code=503, detail="Models still loading, please retry shortly")
 
@@ -307,7 +329,8 @@ async def chat(req: ChatRequest, current_user: dict = Depends(get_current_user))
     # Semantic cache only applies to the first message of a session - the
     # same question mid-conversation can mean something different given
     # prior context, so it's only safe to short-circuit on a fresh session.
-    if is_first_message:
+    use_semantic_cache = is_first_message and not _cache_bypass_requested(x_cache_bypass)
+    if use_semantic_cache:
         cached = await check_semantic_cache(req.message)
         if cached is not None:
             chat_sessions[session_key] = [
@@ -348,7 +371,7 @@ async def chat(req: ChatRequest, current_user: dict = Depends(get_current_user))
 
     response_text = new_messages[-1].content if new_messages else ""
 
-    if is_first_message:
+    if use_semantic_cache:
         await store_in_semantic_cache(req.message, response_text, tool_calls)
 
     return {

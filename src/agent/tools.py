@@ -61,7 +61,7 @@ try:
     from src.common.db import connect_local
     from src.common.embedding_model import get_embedder
     from src.serving.explain import explain_prediction
-    from src.serving.prediction import predict_churn
+    from src.serving.prediction import predict_churn, simulate_prediction
 except ImportError:
     import sys
 
@@ -69,7 +69,7 @@ except ImportError:
     from src.common.db import connect_local
     from src.common.embedding_model import get_embedder
     from src.serving.explain import explain_prediction
-    from src.serving.prediction import predict_churn
+    from src.serving.prediction import predict_churn, simulate_prediction
 
 CHROMA_DIR = "data/chroma_db"
 COLLECTION_NAME = "project_docs"
@@ -161,6 +161,42 @@ def explain_churn_tool(customer_id: str) -> str:
         "Report only these numbers and their direction. Do not give reasons, motivations, "
         "or emotional interpretations for any feature."
     )
+    return "\n".join(lines)
+
+
+@tool
+def simulate_churn_tool(customer_id: str, overrides: dict) -> str:
+    """Answer a what-if question about one customer: re-score their churn risk
+    with some account fields changed, and report the before and after
+    probabilities. Use this for hypothetical questions such as "what if they
+    had a 2-year contract instead?". Changeable fields: contract ("Month-to-month",
+    "One year", "Two year"), payment_method, internet_service ("DSL", "Fiber optic",
+    "No"), partner and dependents ("Yes"/"No"), senior_citizen (0 or 1), tenure
+    (0-72 months), monthly_charges (18.25-118.75), num_addons_active (0-6).
+
+    Args:
+        customer_id: The customer's ID, e.g. "2691-NZETQ".
+        overrides: Field-to-new-value pairs, e.g. {"contract": "Two year"}.
+    """
+    try:
+        result = simulate_prediction(customer_id, overrides)
+    except ValueError as e:
+        return f"Error: {e}"
+    except Exception as e:
+        return f"Error simulating customer_id '{customer_id}': {e}"
+
+    if result is None:
+        return f"Error: customer_id '{customer_id}' not found"
+
+    changes = ", ".join(f"{field}={value}" for field, value in result["overrides"].items())
+    lines = [
+        f"customer_id: {result['customer_id']}",
+        f"what-if: {changes}",
+        f"original_probability: {result['original_probability']}",
+        f"modified_probability: {result['modified_probability']}",
+        f"delta: {result['delta']:+.4f} (churn risk {result['direction']})",
+        "This is the trained model's output with those inputs changed, not a causal forecast.",
+    ]
     return "\n".join(lines)
 
 
