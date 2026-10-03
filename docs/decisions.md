@@ -390,9 +390,10 @@
   model directory (models/production_model/), committed to git and 
   baked into the Docker image — decoupling "what ships" from "the full 
   experiment tracking history."
-- Stopped tracking mlruns.db/mlruns/ in git — these are local 
-  development artifacts (every experiment run, not just the deployed 
-  one), not deployment artifacts. Only the exported production model 
+- mlruns.db and mlruns/ are local development artifacts (every experiment
+  run, not just the deployed one), not deployment artifacts. mlruns.db was
+  never tracked. mlruns/ had 66 files still tracked in git until the change
+  that adds it to .gitignore and untracks it. Only the exported production model 
   belongs in the repo/image.
 
   ## Backend live on Render (Week 8)
@@ -601,20 +602,24 @@
   next step. One unanswerable question scored near the suspicious 
   threshold (0.60) - a legitimate, explainable near-miss (topically 
   adjacent, not actually answering).
-- Stopped tracking data/chroma_db in git - it's a reproducible build 
-  artifact now, not source.
+- data/chroma_db is a reproducible build artifact, not source, but it is
+  still tracked in git (5 files). The intent to ignore it isn't in effect:
+  the .gitignore line for it was written as UTF-16 bytes into a UTF-8 file,
+  so git doesn't match it. Not yet untracked.
 
 
   ## Hybrid search: tested, not adopted (Week 9)
 
 - Built hybrid BM25+vector retrieval, tuned two weightings against the 
   17-question eval set.
-- 0.5/0.5: no improvement on exact-term, worse everywhere else.
-- 0.7/0.3 (BM25-weighted): exact-term hit@1 0.67->1.0, but paraphrase 
-  hit@1 dropped 0.875->0.625, and unanswerable-question safety flagging 
-  dropped from 1/3 to 0/3 - BM25's keyword-overlap confidence made the 
-  retriever hand back confident-looking wrong chunks on questions it 
-  should have declined.
+- 0.5/0.5 (reports/rag_eval_hybrid_50_50.json): exact-term hit@1 unchanged
+  at 0.67, paraphrase hit@1 0.875->0.75, and unanswerable questions flagged
+  as suspicious (score above 0.5) rose from 1/3 to 2/3.
+- 0.7/0.3 (reports/rag_eval_hybrid.json): exact-term hit@1 0.67->1.0, but
+  paraphrase hit@1 dropped 0.875->0.625, and unanswerable questions flagged
+  as suspicious rose from 1/3 to 3/3 (all three) - worse, not better.
+  BM25's keyword-overlap confidence made the retriever hand back
+  confident-looking wrong chunks on questions it should have declined.
 - Decision: reverted to vector-only. The regression on unanswerable 
   questions directly undermines the "decline rather than hallucinate" 
   behavior verified in the previous RAG work - not worth trading for 
@@ -733,4 +738,17 @@
   embedding-model worker thread keeps the process alive - unlikely in 
   practice since Render restarts happen after readiness, not during 
   startup, but a real gap if that assumption ever breaks.
+
+
+## agent.py import-time fix verified in CI-equivalent environment (Week 9)
+
+- Same fix as the other three (lazy get_agent(), RuntimeError instead of 
+  KeyError on missing key). Verified properly this time: simulated CI's 
+  actual conditions (empty environment, no .env, copied source to a 
+  clean directory) rather than relying on a strict-import check alone - 
+  this is what caught test_agent.py's stale import before it became a 
+  fifth break.
+- Dockerfile CMD in exec form - uvicorn is PID 1, clean SIGTERM/exit 0 
+  after startup completes.
+
 
