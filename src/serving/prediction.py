@@ -19,6 +19,7 @@ function, so importing straight from api.py here would be circular.
 
 from src.common.production_model import get_pipeline
 from src.models.inference import prepare_model_input
+from src.serving.explain import explain_prediction
 from src.serving.feature_cache import get_customer_features
 
 
@@ -119,3 +120,107 @@ def simulate_prediction(customer_id: str, overrides: dict) -> dict | None:
         "delta": round(delta, 4),
         "direction": "decreased" if delta < 0 else "increased" if delta > 0 else "unchanged",
     }
+
+
+# Retention recommendations are a small, explicit, hand-written rule table, not a
+# learned policy and not an LLM call. Each rule fires only when its feature is the
+# single largest risk-increasing contribution for the customer. A rule with a
+# simulate entry can be scored with simulate_prediction() to show the projected
+# change; a rule without one is a recommendation only. The table covers the six
+# features that most often top the risk list in a random sample of customers
+# (pct_unresolved, avg_resolution_time_hours, monthly_charges, tenure,
+# avg_usage_count, contract). It is not exhaustive and was not validated against
+# outcomes: whether these actions reduce churn is not measured here.
+_RETENTION_RULES = {
+    "pct_unresolved": {
+        "action": "Resolve the customer's open support tickets: assign an owner and confirm a closure date.",
+        "simulate": None,
+    },
+    "avg_resolution_time_hours": {
+        "action": "Escalate the customer's open support tickets to a senior agent with a resolution deadline.",
+        "simulate": None,
+    },
+    "contract": {
+        "action": "Offer a discounted 1-year contract upgrade.",
+        "simulate": {"contract": "One year"},
+    },
+    "monthly_charges": {
+        "action": "Review the current plan for a lower-priced tier that fits the customer's usage.",
+        "simulate": None,
+    },
+    "tenure": {
+        "action": "Schedule an onboarding check-in call in the customer's first year.",
+        "simulate": None,
+    },
+    "avg_usage_count": {
+        "action": "Offer a usage onboarding session to increase how much the service is used.",
+        "simulate": None,
+    },
+}
+
+# Probability cut-offs for priority. Coarse, chosen by hand; not calibrated to any cost.
+_PRIORITY_LOW_BELOW = 0.2
+_PRIORITY_HIGH_AT_OR_ABOVE = 0.5
+
+
+def recommend_retention_action(customer_id: str) -> dict | None:
+    """Rule-based retention suggestion for one customer. Returns None if the
+    customer isn't found. Otherwise a dict with the priority, the factor that
+    triggered the recommendation, the suggested action (or None), and - when the
+    action maps to a simulatable override - the projected change in churn
+    probability. This is a simple rule lookup on the top risk factor, not a
+    learned policy."""
+    explanation = explain_prediction(customer_id)
+    if explanation is None:
+        return None
+
+    probability = explanation["churn_probability"]
+    if probability < _PRIORITY_LOW_BELOW:
+        priority = "low"
+    elif probability < _PRIORITY_HIGH_AT_OR_ABOVE:
+        priority = "medium"
+    else:
+        priority = "high"
+
+    risk_factors = [f for f in explanation["top_features"] if f["log_odds"] > 0]
+    top_factor = risk_factors[0] if risk_factors else None
+
+    result = {
+        "customer_id": customer_id,
+        "churn_probability": probability,
+        "priority": priority,
+        "triggering_factor": None,
+        "action": None,
+        "projected": None,
+        "note": None,
+    }
+
+    if priority == "low":
+        result["note"] = "Churn risk is low. No retention action is needed."
+        return result
+    if top_factor is None:
+        result["note"] = "No factor is pushing this customer's risk up, so no rule applies."
+        return result
+
+    result["triggering_factor"] = {
+        "feature": top_factor["feature"],
+        "value": top_factor["value"],
+        "log_odds": top_factor["log_odds"],
+    }
+
+    rule = _RETENTION_RULES.get(top_factor["feature"])
+    if rule is None:
+        result["note"] = f"No rule covers the top risk factor '{top_factor['feature']}'."
+        return result
+
+    result["action"] = rule["action"]
+    if rule["simulate"] is not None:
+        simulated = simulate_prediction(customer_id, rule["simulate"])
+        if simulated is not None:
+            result["projected"] = {
+                "overrides": simulated["overrides"],
+                "original_probability": simulated["original_probability"],
+                "modified_probability": simulated["modified_probability"],
+                "delta": simulated["delta"],
+            }
+    return result

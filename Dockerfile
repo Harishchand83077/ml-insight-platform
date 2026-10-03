@@ -64,6 +64,8 @@ EXPOSE 8000
 
 # Render (and most PaaS Docker hosts) require the app to bind to the $PORT
 # they inject, not a fixed port - falls back to 8000 for local `docker run`
-# where $PORT isn't set. Shell-form CMD (not exec-form) so ${PORT:-8000}
-# actually gets substituted.
-CMD uvicorn src.serving.api:app --host 0.0.0.0 --port ${PORT:-8000}
+# where $PORT isn't set. Exec-form JSON can't expand ${PORT}, so the array
+# runs /bin/sh only to read $PORT, and `exec` replaces that shell with
+# uvicorn. uvicorn is then PID 1 and receives SIGTERM directly on
+# `docker stop` / a Render restart, so it can drain in-flight requests.
+CMD ["/bin/sh", "-c", "exec uvicorn src.serving.api:app --host 0.0.0.0 --port ${PORT:-8000}"]

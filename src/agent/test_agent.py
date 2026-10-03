@@ -6,7 +6,7 @@ uvicorn src.serving.api:app --reload --port 8000
 
 import sys
 
-from agent import agent
+from agent import get_agent
 
 sys.stdout.reconfigure(encoding="utf-8")  # Windows console defaults to cp1252,
 # which can't print characters some LLM output contains (e.g. non-breaking hyphens)
@@ -15,7 +15,7 @@ QUESTION = "What's the churn risk for customer 7590-VHVEG?"
 
 
 def main():
-    result = agent.invoke({"messages": [{"role": "user", "content": QUESTION}]})
+    result = get_agent().invoke({"messages": [{"role": "user", "content": QUESTION}]})
 
     print(f"Question: {QUESTION}\n")
     print("=== Full message history (tool calls + args included) ===\n")

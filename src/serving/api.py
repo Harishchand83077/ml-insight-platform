@@ -7,8 +7,8 @@ to models/production_model/model.skops - see load_production_model) is
 loaded once at startup, not per-request, via skops.io.load() directly -
 not mlflow, which isn't a serve-time dependency at all (kept in
 requirements.txt for training, dropped from requirements-docker.txt).
-The LangChain agent (src/agent/agent.py) is imported once at module load
-for the same reason.
+The LangChain agent (src/agent/agent.py) is built lazily on first use via
+get_agent(), so importing this module doesn't need GROQ_API_KEY set.
 
 /predict and /chat require a valid JWT (Authorization: Bearer <token>,
 obtained from /auth/signup or /auth/login) - see src/serving/auth.py for
@@ -62,7 +62,7 @@ from prometheus_client import Histogram
 from prometheus_fastapi_instrumentator import Instrumentator
 from pydantic import BaseModel, constr
 
-from src.agent.agent import agent as churn_agent
+from src.agent.agent import get_agent
 from src.agent.semantic_cache import check_semantic_cache, store_in_semantic_cache
 from src.common.embedding_model import EMBEDDING_MODEL_NAME, set_embedder
 from src.common.production_model import set_pipeline
@@ -347,6 +347,7 @@ async def chat(
 
     try:
         with AGENT_RESPONSE_TIME.time():
+            churn_agent = await asyncio.to_thread(get_agent)
             result = await asyncio.to_thread(churn_agent.invoke, {"messages": input_messages})
     except groq.APIStatusError as e:
         if e.status_code in GROQ_RATE_LIMIT_STATUS_CODES:

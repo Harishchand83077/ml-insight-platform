@@ -33,6 +33,7 @@ try:
         get_churn_rate_by_column,
         get_customer_count,
         explain_churn_tool,
+        recommend_retention_tool,
         simulate_churn_tool,
         predict_churn_tool,
         query_project_docs_tool,
@@ -42,6 +43,7 @@ except ImportError:
         get_churn_rate_by_column,
         get_customer_count,
         explain_churn_tool,
+        recommend_retention_tool,
         simulate_churn_tool,
         predict_churn_tool,
         query_project_docs_tool,
@@ -50,7 +52,7 @@ except ImportError:
 load_dotenv()
 
 SYSTEM_PROMPT = (
-    "You are a customer analytics assistant. You have six tools:\n"
+    "You are a customer analytics assistant. You have seven tools:\n"
     "- predict_churn_tool: looks up a specific customer's churn risk. Use "
     "this when the user asks about one customer by ID and wants a number.\n"
     "- explain_churn_tool: lists the features that moved a specific "
@@ -59,6 +61,14 @@ SYSTEM_PROMPT = (
     "a customer is at risk, or what is driving their predicted risk, not "
     "just what it is. Call predict_churn_tool too if the user also wants "
     "the probability.\n"
+    "- recommend_retention_tool: suggests one retention action for a specific "
+    "at-risk customer, chosen by a fixed rule from that customer's largest "
+    "risk factor. Use it when the user asks what should be done about a "
+    "customer's risk. Say plainly that this is a simple rule-based "
+    "suggestion, not a validated or optimized policy, and that it does not "
+    "show the action would reduce churn unless the tool reports a projected "
+    "change from the model. If the priority is low, say no action is needed "
+    "rather than inventing one.\n"
     "- simulate_churn_tool: answers what-if questions about one customer by "
     "re-scoring them with some account fields changed, e.g. {\"contract\": "
     "\"Two year\"}. Use this for hypothetical questions ('what if they had "
@@ -112,10 +122,21 @@ SYSTEM_PROMPT = (
     "estimating a number yourself. Summarize results in plain language."
 )
 
-model = ChatGroq(model="openai/gpt-oss-120b", api_key=os.environ["GROQ_API_KEY"])
+_agent = None
 
-agent = create_agent(
-    model,
-    tools=[predict_churn_tool, explain_churn_tool, simulate_churn_tool, get_churn_rate_by_column, get_customer_count, query_project_docs_tool],
-    system_prompt=SYSTEM_PROMPT,
-)
+
+def get_agent():
+    """Builds the LangGraph agent on first use and caches it. Built lazily so
+    importing this module doesn't require GROQ_API_KEY to be set."""
+    global _agent
+    if _agent is None:
+        api_key = os.environ.get("GROQ_API_KEY")
+        if not api_key:
+            raise RuntimeError("GROQ_API_KEY is not set. Add it to your .env before using the chat agent.")
+        model = ChatGroq(model="openai/gpt-oss-120b", api_key=api_key)
+        _agent = create_agent(
+            model,
+            tools=[predict_churn_tool, explain_churn_tool, simulate_churn_tool, recommend_retention_tool, get_churn_rate_by_column, get_customer_count, query_project_docs_tool],
+            system_prompt=SYSTEM_PROMPT,
+        )
+    return _agent

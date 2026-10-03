@@ -61,7 +61,7 @@ try:
     from src.common.db import connect_local
     from src.common.embedding_model import get_embedder
     from src.serving.explain import explain_prediction
-    from src.serving.prediction import predict_churn, simulate_prediction
+    from src.serving.prediction import predict_churn, recommend_retention_action, simulate_prediction
 except ImportError:
     import sys
 
@@ -69,7 +69,7 @@ except ImportError:
     from src.common.db import connect_local
     from src.common.embedding_model import get_embedder
     from src.serving.explain import explain_prediction
-    from src.serving.prediction import predict_churn, simulate_prediction
+    from src.serving.prediction import predict_churn, recommend_retention_action, simulate_prediction
 
 CHROMA_DIR = "data/chroma_db"
 COLLECTION_NAME = "project_docs"
@@ -197,6 +197,53 @@ def simulate_churn_tool(customer_id: str, overrides: dict) -> str:
         f"delta: {result['delta']:+.4f} (churn risk {result['direction']})",
         "This is the trained model's output with those inputs changed, not a causal forecast.",
     ]
+    return "\n".join(lines)
+
+
+@tool
+def recommend_retention_tool(customer_id: str) -> str:
+    """Suggest a retention action for one at-risk customer. This is a simple
+    rule-based mapping from the customer's single largest risk-increasing
+    factor to a fixed action, not a learned or optimized policy, and it has
+    not been validated against outcomes. Use this when asked what should be
+    done about a specific customer's churn risk.
+
+    Args:
+        customer_id: The customer's ID, e.g. "2691-NZETQ".
+    """
+    try:
+        result = recommend_retention_action(customer_id)
+    except Exception as e:
+        return f"Error recommending for customer_id '{customer_id}': {e}"
+
+    if result is None:
+        return f"Error: customer_id '{customer_id}' not found"
+
+    lines = [
+        f"customer_id: {result['customer_id']}",
+        f"churn_probability: {result['churn_probability']}",
+        f"priority: {result['priority']}",
+    ]
+    factor = result["triggering_factor"]
+    if factor is not None:
+        lines.append(
+            f"triggering_factor: {factor['feature']}={factor['value']} "
+            f"(contributed {factor['log_odds']:+.4f} log-odds toward churn)"
+        )
+    if result["action"] is not None:
+        lines.append(f"suggested_action: {result['action']}")
+    if result["projected"] is not None:
+        proj = result["projected"]
+        changes = ", ".join(f"{k}={v}" for k, v in proj["overrides"].items())
+        lines.append(
+            f"projected_if_applied ({changes}): probability {proj['original_probability']} -> "
+            f"{proj['modified_probability']} (delta {proj['delta']:+.4f}, model output, not a forecast)"
+        )
+    if result["note"] is not None:
+        lines.append(f"note: {result['note']}")
+    lines.append(
+        "This is a rule-based suggestion from the top risk factor, not a validated or optimized policy."
+    )
     return "\n".join(lines)
 
 

@@ -702,4 +702,35 @@
   "verification" done through near-identical /chat questions. Added 
   [cache bypass mechanism] to prevent a third recurrence.
 
-  
+  ## Semantic cache test bypass (Week 9)
+
+- Added X-Cache-Bypass header, gated by a server-side CACHE_BYPASS_TOKEN 
+  env var (unset by default - disabled unless explicitly configured). 
+  Constant-time comparison, wrong token returns 403 rather than silently 
+  ignoring the header. Bypassed requests skip both cache read and write, 
+  so test traffic never pollutes the shared cache.
+- Not set on Render - local/testing convenience only, no reason to exist 
+  in production.
+- Documented in CLAUDE.md for future sessions, since this testing gap 
+  had already caused two invalid verification rounds before being caught.
+
+
+  ## Fourth instance of import-time env dependency, fixed (Week 9)
+
+- Same bug class as feature_cache/auth/feedback: agent.py instantiated 
+  ChatGroq with GROQ_API_KEY at module import time, breaking any test 
+  that imports it (api.py -> agent.py chain) without a real key set - 
+  this is what broke CI this round (test_cache_bypass.py's collection).
+- Fixed with the same lazy-getter pattern used for the other three. 
+  Four occurrences of the same mistake in one codebase is worth noting 
+  as a lesson: anything doing I/O or reading a required secret at module 
+  scope should be treated as suspect by default, not just caught 
+  reactively.
+- Dockerfile CMD switched to exec form - uvicorn is now PID 1 and 
+  receives SIGTERM directly (verified: clean exit 0 vs. prior SIGKILL 
+  137 after models are ready). Known gap, not fixed: a stop signal 
+  during model loading still doesn't shut down cleanly, since the 
+  embedding-model worker thread keeps the process alive - unlikely in 
+  practice since Render restarts happen after readiness, not during 
+  startup, but a real gap if that assumption ever breaks.
+
