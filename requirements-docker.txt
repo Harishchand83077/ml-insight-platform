@@ -35,6 +35,13 @@ langchain-huggingface==1.2.2
 # just a local dev script, so a resolver change silently dropping or
 # moving this is a production build break, not a local inconvenience.
 langchain-text-splitters==1.1.2
+# BM25 half of query_project_docs_tool's hybrid retriever
+# (src/agent/hybrid_retriever.py) - deliberately NOT langchain_community's
+# BM25Retriever/EnsembleRetriever, which would pull in a much larger,
+# broadly-scoped package just for two small classes this project
+# reimplements directly (a few dozen lines) against rank_bm25 itself.
+# Depends on nothing but numpy, already required above.
+rank_bm25==0.2.2
 sentence-transformers==6.1.0
 requests==2.34.2
 prometheus-fastapi-instrumentator==8.1.0

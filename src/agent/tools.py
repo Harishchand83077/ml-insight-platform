@@ -31,6 +31,21 @@ labeled with a "source.md > Section" citation built from each chunk's
 metadata, it does not answer the question itself; the agent's LLM is
 responsible for synthesizing an answer from what comes back, citing
 those labels per SYSTEM_PROMPT's instructions.
+
+A BM25+vector hybrid retriever (src/agent/hybrid_retriever.py, weighted
+Reciprocal Rank Fusion over the same chunks) was built and measured
+against this plain vector search via tests/eval/rag_eval.py and is NOT
+wired in here - see docs/decisions.md's "Hybrid search evaluated, not
+adopted" entry for the numbers. In short: at its default 0.5/0.5 weight
+it was strictly worse (no exact-term gain, worse paraphrase retrieval,
+worse false-confidence on unanswerable questions); at 0.7 BM25/0.3
+vector it did clearly fix exact-term hit@1 (0.67->1.0) but at the cost
+of paraphrase hit@1 dropping 0.875->0.625 and EVERY unanswerable test
+question scoring above the suspicious-confidence threshold (vs. 1/3 for
+vector-only) - a regression against this tool's own "say so if nothing
+relevant" contract. hybrid_retriever.py is kept, tested, and documented
+in case a future corpus or question mix makes that tradeoff worth
+revisiting, but plain vector search is what's actually live.
 """
 
 from pathlib import Path

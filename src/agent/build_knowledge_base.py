@@ -123,8 +123,14 @@ def chunk_documents(documents, embeddings):
     """Splits each document's body by markdown heading first, then caps
     any still-too-large section with the token-based character splitter
     - most sections land well under the cap and pass through that second
-    split unchanged. Each output chunk carries source file, doc_type, and
-    its most specific heading (section) as metadata."""
+    split unchanged. Each output chunk carries source file, doc_type, its
+    most specific heading (section), and a stable chunk_id (its 0-based
+    position in this function's output, deterministic given fixed file
+    discovery order and splitting logic) as metadata. chunk_id exists so
+    src/agent/hybrid_retriever.py's BM25 index - built by calling this
+    same function a second time - can be matched back up against results
+    Chroma returns for the identical chunk, without relying on content-
+    string comparison or object identity across the two indexes."""
     header_splitter = MarkdownHeaderTextSplitter(headers_to_split_on=HEADERS_TO_SPLIT_ON, strip_headers=False)
     size_splitter = RecursiveCharacterTextSplitter.from_huggingface_tokenizer(
         embeddings._client.tokenizer,
@@ -148,7 +154,12 @@ def chunk_documents(documents, embeddings):
                 chunks.append(
                     Document(
                         page_content=sized_text,
-                        metadata={"source": source_path, "doc_type": doc_type, "section": section},
+                        metadata={
+                            "source": source_path,
+                            "doc_type": doc_type,
+                            "section": section,
+                            "chunk_id": len(chunks),
+                        },
                     )
                 )
 

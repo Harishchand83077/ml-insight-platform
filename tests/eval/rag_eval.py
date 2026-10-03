@@ -7,25 +7,35 @@ fast, fully-mocked unit suite). Run manually after rebuilding the
 knowledge base:
 
     python src/agent/build_knowledge_base.py
-    python tests/eval/rag_eval.py
+    python tests/eval/rag_eval.py               # vector-only baseline
+    python tests/eval/rag_eval.py --hybrid       # BM25+vector hybrid retriever
 
 Runs a fixed set of 17 question/expected-source pairs (6 exact-term - the
 query uses the same wording/numbers/policy IDs as the source doc; 8
 semantic paraphrase - same underlying fact, deliberately different
-wording, no exact term overlap; 3 unanswerable - no doc covers it) against
-the live Chroma index, reports hit@1/hit@3 per category, and flags any
-unanswerable question whose top retrieved chunk scores above
+wording, no exact term overlap; 3 unanswerable - no doc covers it)
+against either retriever, reports hit@1/hit@3 per category, and flags
+any unanswerable question whose top retrieved chunk scores above
 SUSPICIOUS_SCORE_THRESHOLD - a high score on a question nothing should
 answer is a sign the retriever would confidently hand the agent an
 irrelevant chunk instead of coming back empty. Saves the full result to
-reports/rag_eval_baseline.json.
+reports/rag_eval_baseline.json (vector) or reports/rag_eval_hybrid.json
+(--hybrid).
 
-The 0.5 threshold was chosen empirically: a local run scored the 6
-exact-term questions' top hits at 0.70-0.90 relevance and the 3
-unanswerable questions' top hits at 0.27-0.31 - a wide gap with plenty of
-margin either side, not a number tuned to make this pass.
+The 0.5 threshold was chosen empirically against the vector-only
+baseline: a local run scored the 6 exact-term questions' top hits at
+0.70-0.90 relevance and the 3 unanswerable questions' top hits at
+0.27-0.31 - a wide gap with plenty of margin either side, not a number
+tuned to make this pass. The hybrid retriever's score isn't the same
+underlying quantity (see src/agent/hybrid_retriever.py's
+hybrid_search_with_scores - a fused-RRF score normalized by the maximum
+possible RRF score, not a cosine similarity), but it's normalized onto
+the same [0, 1]-ish "fraction of this retriever's own max confidence"
+scale, so the same 0.5 threshold is still a meaningful, comparable check
+even though the two numbers aren't the same thing underneath.
 """
 
+import argparse
 import json
 import sys
 from datetime import datetime, timezone
@@ -38,10 +48,12 @@ from langchain_huggingface import HuggingFaceEmbeddings
 # first, same fallback pattern src/agent/tools.py uses.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
+from src.agent.hybrid_retriever import hybrid_search_with_scores  # noqa: E402
 from src.agent.tools import _get_vectorstore  # noqa: E402
-from src.common.embedding_model import EMBEDDING_MODEL_NAME, set_embedder  # noqa: E402
+from src.common.embedding_model import EMBEDDING_MODEL_NAME, get_embedder, set_embedder  # noqa: E402
 
-REPORT_PATH = Path("reports/rag_eval_baseline.json")
+BASELINE_REPORT_PATH = Path("reports/rag_eval_baseline.json")
+HYBRID_REPORT_PATH = Path("reports/rag_eval_hybrid.json")
 TOP_K = 3
 SUSPICIOUS_SCORE_THRESHOLD = 0.5
 
@@ -145,8 +157,11 @@ def _source_basename(metadata):
     return Path(metadata.get("source", "unknown")).name
 
 
-def evaluate_question(vectorstore, item):
-    results = vectorstore.similarity_search_with_relevance_scores(item["question"], k=TOP_K)
+def evaluate_question(vectorstore, item, hybrid):
+    if hybrid:
+        results = hybrid_search_with_scores(vectorstore, get_embedder(), item["question"], k=TOP_K)
+    else:
+        results = vectorstore.similarity_search_with_relevance_scores(item["question"], k=TOP_K)
     retrieved = [
         {"source": _source_basename(doc.metadata), "section": doc.metadata.get("section"), "score": round(score, 4)}
         for doc, score in results
@@ -202,24 +217,33 @@ def summarize(records):
 
 
 def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--hybrid", action="store_true", help="Evaluate the BM25+vector hybrid retriever instead of vector-only."
+    )
+    args = parser.parse_args()
+
     set_embedder(HuggingFaceEmbeddings(model_name=EMBEDDING_MODEL_NAME))
     vectorstore = _get_vectorstore()
 
-    records = [evaluate_question(vectorstore, item) for item in QUESTIONS]
+    records = [evaluate_question(vectorstore, item, args.hybrid) for item in QUESTIONS]
     summary = summarize(records)
 
+    report_path = HYBRID_REPORT_PATH if args.hybrid else BASELINE_REPORT_PATH
     report = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
+        "retriever": "hybrid_bm25_vector_rrf" if args.hybrid else "vector_only",
         "top_k": TOP_K,
         "n_questions": len(QUESTIONS),
         "summary": summary,
         "results": records,
     }
 
-    REPORT_PATH.parent.mkdir(parents=True, exist_ok=True)
-    REPORT_PATH.write_text(json.dumps(report, indent=2), encoding="utf-8")
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    report_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
 
-    print(f"\n{'category':<12}{'n':>4}{'hit@1':>10}{'hit@3':>10}")
+    print(f"\nretriever: {report['retriever']}")
+    print(f"{'category':<12}{'n':>4}{'hit@1':>10}{'hit@3':>10}")
     for category, stats in summary["by_category"].items():
         print(f"{category:<12}{stats['n']:>4}{stats['hit_at_1']:>10}{stats['hit_at_3']:>10}")
     print(f"{'overall':<12}{len(QUESTIONS) - summary['unanswerable']['n']:>4}"
@@ -228,7 +252,7 @@ def main():
     u = summary["unanswerable"]
     print(f"\nunanswerable: {u['n']} questions, top scores {u['top_scores']}, "
           f"{u['suspicious_count']} above suspicious threshold ({u['suspicious_threshold']})")
-    print(f"\nSaved full report to {REPORT_PATH}")
+    print(f"\nSaved full report to {report_path}")
 
 
 if __name__ == "__main__":

@@ -1,11 +1,11 @@
 {
-  "generated_at": "2026-10-01T12:33:28.895185+00:00",
-  "retriever": "vector_only",
+  "generated_at": "2026-10-01T12:34:14.422407+00:00",
+  "retriever": "hybrid_bm25_vector_rrf",
   "top_k": 3,
   "n_questions": 17,
   "summary": {
-    "overall_hit_at_1": 0.7857,
-    "overall_hit_at_3": 1.0,
+    "overall_hit_at_1": 0.7143,
+    "overall_hit_at_3": 0.9286,
     "by_category": {
       "exact_term": {
         "n": 6,
@@ -14,18 +14,18 @@
       },
       "paraphrase": {
         "n": 8,
-        "hit_at_1": 0.875,
-        "hit_at_3": 1.0
+        "hit_at_1": 0.75,
+        "hit_at_3": 0.875
       }
     },
     "unanswerable": {
       "n": 3,
-      "suspicious_count": 1,
+      "suspicious_count": 2,
       "suspicious_threshold": 0.5,
       "top_scores": [
-        0.306,
-        0.6042,
-        0.4354
+        0.5,
+        0.9412,
+        0.9454
       ]
     }
   },
@@ -40,20 +40,20 @@
         {
           "source": "outage_credit_policy.md",
           "section": "Interaction with Early Termination Fees",
-          "score": 0.703
+          "score": 0.9918
         },
         {
           "source": "contract_terms.md",
           "section": "Contract Terms and Early Termination Fees",
-          "score": 0.6414
+          "score": 0.9918
         },
         {
           "source": "contract_terms.md",
           "section": "ETF Waiver Conditions",
-          "score": 0.6153
+          "score": 0.9677
         }
       ],
-      "top_score": 0.703,
+      "top_score": 0.9918,
       "hit_at_1": false,
       "hit_at_3": true
     },
@@ -67,20 +67,20 @@
         {
           "source": "fiber_pricing_promotions.md",
           "section": "New-Customer Promotion: FIBER200OFF",
-          "score": 0.8153
+          "score": 1.0
         },
         {
           "source": "retention_playbook_competitor_offer.md",
           "section": "Win-Back for Already-Canceled Accounts",
-          "score": 0.7273
+          "score": 0.9757
         },
         {
           "source": "fiber_pricing_promotions.md",
-          "section": "Bundle Discount",
-          "score": 0.6383
+          "section": "Senior and Military Discounts",
+          "score": 0.9606
         }
       ],
-      "top_score": 0.8153,
+      "top_score": 1.0,
       "hit_at_1": true,
       "hit_at_3": true
     },
@@ -94,20 +94,20 @@
         {
           "source": "refund_cancellation_policy.md",
           "section": "Cancellation Window",
-          "score": 0.7225
+          "score": 1.0
+        },
+        {
+          "source": "outage_credit_policy.md",
+          "section": "Interaction with Early Termination Fees",
+          "score": 0.9375
         },
         {
           "source": "refund_cancellation_policy.md",
           "section": "Prorated Refunds Mid-Cycle",
-          "score": 0.6825
-        },
-        {
-          "source": "refund_cancellation_policy.md",
-          "section": "Refund Method and Timeline",
-          "score": 0.6525
+          "score": 0.4918
         }
       ],
-      "top_score": 0.7225,
+      "top_score": 1.0,
       "hit_at_1": true,
       "hit_at_3": true
     },
@@ -121,20 +121,20 @@
         {
           "source": "retention_playbook_service_quality.md",
           "section": "Who This Applies To",
-          "score": 0.7247
+          "score": 0.9918
         },
         {
           "source": "support_sla.md",
           "section": "Uptime Guarantee",
-          "score": 0.6813
+          "score": 0.9918
         },
         {
-          "source": "support_sla.md",
-          "section": "Service Credits for SLA Breach",
-          "score": 0.6749
+          "source": "contract_terms.md",
+          "section": "ETF Waiver Conditions",
+          "score": 0.9449
         }
       ],
-      "top_score": 0.7247,
+      "top_score": 0.9918,
       "hit_at_1": false,
       "hit_at_3": true
     },
@@ -149,20 +149,20 @@
         {
           "source": "model_card_churn_xgboost.md",
           "section": "Training Data",
-          "score": 0.7443
+          "score": 1.0
         },
         {
           "source": "glossary.md",
           "section": "Churn",
-          "score": 0.713
+          "score": 0.9533
         },
         {
-          "source": "decisions.md",
-          "section": "EDA findings (Day 1)",
-          "score": 0.6914
+          "source": "data_dictionary_customer_features.md",
+          "section": "Categorical Columns",
+          "score": 0.9174
         }
       ],
-      "top_score": 0.7443,
+      "top_score": 1.0,
       "hit_at_1": true,
       "hit_at_3": true
     },
@@ -177,20 +177,20 @@
         {
           "source": "glossary.md",
           "section": "PR-AUC vs ROC-AUC (and why we chose PR-AUC)",
-          "score": 0.7374
+          "score": 1.0
         },
         {
-          "source": "model_card_churn_xgboost.md",
-          "section": "Model Details",
-          "score": 0.6884
+          "source": "glossary.md",
+          "section": "Churn",
+          "score": 0.968
         },
         {
           "source": "model_card_churn_xgboost.md",
           "section": "Performance Metrics",
-          "score": 0.6879
+          "score": 0.9677
         }
       ],
-      "top_score": 0.7374,
+      "top_score": 1.0,
       "hit_at_1": true,
       "hit_at_3": true
     },
@@ -203,21 +203,21 @@
       "retrieved": [
         {
           "source": "contract_terms.md",
-          "section": "1-Year Contract",
-          "score": 0.7055
+          "section": "2-Year Contract",
+          "score": 0.9757
         },
         {
           "source": "contract_terms.md",
-          "section": "2-Year Contract",
-          "score": 0.6833
+          "section": "Month-to-Month",
+          "score": 0.968
         },
         {
           "source": "refund_cancellation_policy.md",
           "section": "Cancellation Window",
-          "score": 0.6399
+          "score": 0.9601
         }
       ],
-      "top_score": 0.7055,
+      "top_score": 0.9757,
       "hit_at_1": true,
       "hit_at_3": true
     },
@@ -231,20 +231,20 @@
         {
           "source": "refund_cancellation_policy.md",
           "section": "Cancellation Window",
-          "score": 0.6371
+          "score": 0.5
+        },
+        {
+          "source": "decisions.md",
+          "section": "rebbitMQ vs reddis for live streming synthetic data",
+          "score": 0.5
         },
         {
           "source": "retention_playbook_competitor_offer.md",
           "section": "Win-Back for Already-Canceled Accounts",
-          "score": 0.5899
-        },
-        {
-          "source": "outage_credit_policy.md",
-          "section": "Disputing a Credit Amount",
-          "score": 0.585
+          "score": 0.4918
         }
       ],
-      "top_score": 0.6371,
+      "top_score": 0.5,
       "hit_at_1": true,
       "hit_at_3": true
     },
@@ -258,20 +258,20 @@
         {
           "source": "autopay_payment_policy.md",
           "section": "Autopay Discount",
-          "score": 0.6713
-        },
-        {
-          "source": "contract_terms.md",
-          "section": "Month-to-Month",
-          "score": 0.5632
+          "score": 1.0
         },
         {
           "source": "autopay_payment_policy.md",
           "section": "Payment Method Changes",
-          "score": 0.5617
+          "score": 0.9316
+        },
+        {
+          "source": "autopay_payment_policy.md",
+          "section": "Accepted Payment Methods",
+          "score": 0.924
         }
       ],
-      "top_score": 0.6713,
+      "top_score": 1.0,
       "hit_at_1": true,
       "hit_at_3": true
     },
@@ -285,20 +285,20 @@
         {
           "source": "outage_credit_policy.md",
           "section": "Multi-Service Accounts",
-          "score": 0.5994
+          "score": 0.9918
         },
         {
-          "source": "outage_credit_policy.md",
-          "section": "Credit Calculation",
-          "score": 0.565
+          "source": "support_sla.md",
+          "section": "Service Credits for SLA Breach",
+          "score": 0.8893
         },
         {
-          "source": "refund_cancellation_policy.md",
-          "section": "Cancellation Window",
-          "score": 0.5248
+          "source": "decisions.md",
+          "section": "rebbitMQ vs reddis for live streming synthetic data",
+          "score": 0.5
         }
       ],
-      "top_score": 0.5994,
+      "top_score": 0.9918,
       "hit_at_1": true,
       "hit_at_3": true
     },
@@ -310,23 +310,23 @@
       ],
       "retrieved": [
         {
-          "source": "retention_playbook_price_sensitive.md",
-          "section": "Offer Ladder (use in order, stop at first acceptance)",
-          "score": 0.4815
-        },
-        {
-          "source": "contract_terms.md",
-          "section": "1-Year Contract",
-          "score": 0.4763
-        },
-        {
           "source": "retention_playbook_service_quality.md",
           "section": "Offer Ladder",
-          "score": 0.4591
+          "score": 0.9757
+        },
+        {
+          "source": "retention_playbook_price_sensitive.md",
+          "section": "Offer Ladder (use in order, stop at first acceptance)",
+          "score": 0.5
+        },
+        {
+          "source": "decisions.md",
+          "section": "rebbitMQ vs reddis for live streming synthetic data",
+          "score": 0.5
         }
       ],
-      "top_score": 0.4815,
-      "hit_at_1": true,
+      "top_score": 0.9757,
+      "hit_at_1": false,
       "hit_at_3": true
     },
     {
@@ -339,22 +339,22 @@
         {
           "source": "glossary.md",
           "section": "Churn",
-          "score": 0.7843
+          "score": 0.9615
         },
         {
-          "source": "model_card_churn_xgboost.md",
-          "section": "Training Data",
-          "score": 0.7409
+          "source": "glossary.md",
+          "section": "The leakage issue we found and fixed",
+          "score": 0.9526
         },
         {
-          "source": "decisions.md",
-          "section": "Leakage fix validated (Week 2)",
-          "score": 0.738
+          "source": "glossary.md",
+          "section": "PR-AUC vs ROC-AUC (and why we chose PR-AUC)",
+          "score": 0.5
         }
       ],
-      "top_score": 0.7843,
+      "top_score": 0.9615,
       "hit_at_1": false,
-      "hit_at_3": true
+      "hit_at_3": false
     },
     {
       "question": "Why do customers who've been with the company for less time leave more often?",
@@ -367,20 +367,20 @@
         {
           "source": "glossary.md",
           "section": "Tenure",
-          "score": 0.5002
+          "score": 0.9762
+        },
+        {
+          "source": "glossary.md",
+          "section": "Churn",
+          "score": 0.968
         },
         {
           "source": "retention_playbook_price_sensitive.md",
-          "section": "Who This Applies To",
-          "score": 0.4662
-        },
-        {
-          "source": "retention_playbook_service_quality.md",
-          "section": "Who This Applies To",
-          "score": 0.4612
+          "section": "What Not to Do",
+          "score": 0.5
         }
       ],
-      "top_score": 0.5002,
+      "top_score": 0.9762,
       "hit_at_1": true,
       "hit_at_3": true
     },
@@ -393,21 +393,21 @@
       "retrieved": [
         {
           "source": "glossary.md",
-          "section": "The leakage issue we found and fixed",
-          "score": 0.664
+          "section": "Churn",
+          "score": 0.9839
         },
         {
           "source": "model_card_churn_xgboost.md",
-          "section": "Training Data",
-          "score": 0.6563
+          "section": "Performance Metrics",
+          "score": 0.9524
         },
         {
           "source": "glossary.md",
-          "section": "Churn",
-          "score": 0.6529
+          "section": "PR-AUC vs ROC-AUC (and why we chose PR-AUC)",
+          "score": 0.9187
         }
       ],
-      "top_score": 0.664,
+      "top_score": 0.9839,
       "hit_at_1": true,
       "hit_at_3": true
     },
@@ -419,20 +419,20 @@
         {
           "source": "retention_playbook_competitor_offer.md",
           "section": "Retention Playbook: Competitor Offer / Win-Back",
-          "score": 0.306
+          "score": 0.5
+        },
+        {
+          "source": "support_sla.md",
+          "section": "What Counts Against the SLA",
+          "score": 0.5
         },
         {
           "source": "fiber_pricing_promotions.md",
           "section": "Fiber Availability and the DSL/Cable Churn Gap",
-          "score": 0.2764
-        },
-        {
-          "source": "retention_playbook_price_sensitive.md",
-          "section": "Retention Playbook: Price-Sensitive Customers",
-          "score": 0.2724
+          "score": 0.4918
         }
       ],
-      "top_score": 0.306,
+      "top_score": 0.5,
       "suspicious": false
     },
     {
@@ -443,20 +443,20 @@
         {
           "source": "fiber_pricing_promotions.md",
           "section": "Fiber Availability and the DSL/Cable Churn Gap",
-          "score": 0.6042
+          "score": 0.9412
         },
         {
-          "source": "fiber_pricing_promotions.md",
-          "section": "Senior and Military Discounts",
-          "score": 0.6031
+          "source": "retention_playbook_competitor_offer.md",
+          "section": "What Not to Match",
+          "score": 0.9233
         },
         {
-          "source": "fiber_pricing_promotions.md",
-          "section": "Bundle Discount",
-          "score": 0.5869
+          "source": "retention_playbook_competitor_offer.md",
+          "section": "Match Authority",
+          "score": 0.5
         }
       ],
-      "top_score": 0.6042,
+      "top_score": 0.9412,
       "suspicious": true
     },
     {
@@ -465,23 +465,23 @@
       "expected_sources": null,
       "retrieved": [
         {
+          "source": "support_sla.md",
+          "section": "Service Credits for SLA Breach",
+          "score": 0.9454
+        },
+        {
           "source": "refund_cancellation_policy.md",
           "section": "Disputed Charges",
-          "score": 0.4354
+          "score": 0.5
         },
         {
-          "source": "retention_playbook_service_quality.md",
-          "section": "Retention Playbook: Service Quality Complaints",
-          "score": 0.4119
-        },
-        {
-          "source": "support_sla.md",
-          "section": "Response Time Targets by Channel",
-          "score": 0.3994
+          "source": "outage_credit_policy.md",
+          "section": "Multi-Service Accounts",
+          "score": 0.5
         }
       ],
-      "top_score": 0.4354,
-      "suspicious": false
+      "top_score": 0.9454,
+      "suspicious": true
     }
   ]
 }

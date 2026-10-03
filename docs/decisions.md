@@ -579,3 +579,45 @@
 - Verified live: agent question for a real customer_id returns a real 
   prediction with tool_calls confirming predict_churn_tool executed.
 
+
+  ## RAG deepened, deployment gap fixed (Week 9)
+
+- Root cause of the empty-RAG-answers bug: Chroma was never built or 
+  shipped in Docker at all (not specific to the deepening work - this 
+  was broken since the very first deploy). Chroma silently creates an 
+  empty collection for a missing path rather than erroring, so the tool 
+  never raised - it just always returned "no relevant context."
+- Fixed: Dockerfile now builds the index at build time (COPY docs/, run 
+  build_knowledge_base.py, assert >=50 chunks or fail the build) and 
+  .dockerignore scoped with an explicit exception rather than a blanket 
+  data/ exclusion.
+- Expanded to 11 synthetic docs (refund/contract/SLA/pricing policies, 
+  retention playbooks, model card, data dictionary), citation format 
+  [source: file.md > Section], agent explicitly declines rather than 
+  hallucinating when nothing relevant retrieves.
+- Eval baseline (17 questions): hit@1 0.79, hit@3 1.0 overall. Exact-term 
+  queries weaker (0.67) than paraphrase (0.875) - expected for pure 
+  vector search, a natural case for hybrid search (BM25 + vector) as a 
+  next step. One unanswerable question scored near the suspicious 
+  threshold (0.60) - a legitimate, explainable near-miss (topically 
+  adjacent, not actually answering).
+- Stopped tracking data/chroma_db in git - it's a reproducible build 
+  artifact now, not source.
+
+
+  ## Hybrid search: tested, not adopted (Week 9)
+
+- Built hybrid BM25+vector retrieval, tuned two weightings against the 
+  17-question eval set.
+- 0.5/0.5: no improvement on exact-term, worse everywhere else.
+- 0.7/0.3 (BM25-weighted): exact-term hit@1 0.67->1.0, but paraphrase 
+  hit@1 dropped 0.875->0.625, and unanswerable-question safety flagging 
+  dropped from 1/3 to 0/3 - BM25's keyword-overlap confidence made the 
+  retriever hand back confident-looking wrong chunks on questions it 
+  should have declined.
+- Decision: reverted to vector-only. The regression on unanswerable 
+  questions directly undermines the "decline rather than hallucinate" 
+  behavior verified in the previous RAG work - not worth trading for 
+  gains on a minority of exact-term queries. Hybrid module kept, 
+  documented, unused - a real option if the corpus or query mix changes.
+
