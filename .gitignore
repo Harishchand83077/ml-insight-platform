@@ -10,3 +10,7 @@ mlruns/
 data/chroma_db/
 *.log
 chat_test.json
+data/processed/events.db
+data/processed/features.csv
+data/synthetic/
+reports/*.html
