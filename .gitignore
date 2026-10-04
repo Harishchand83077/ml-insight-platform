@@ -8,3 +8,5 @@ htmlcov/
 mlruns.db
 mlruns/
 data/chroma_db/
+*.log
+chat_test.json
