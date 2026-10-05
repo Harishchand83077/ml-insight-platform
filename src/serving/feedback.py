@@ -8,16 +8,14 @@ low-concurrency path compared to those, so there's no reason to reserve
 as many connections against Supabase's pooler for this.
 """
 
-import psycopg2.pool
-
 try:
-    from src.common.db import get_database_url
+    from src.common.db import checkout_for_write, make_pool
 except ImportError:
     import sys
     from pathlib import Path
 
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
-    from src.common.db import get_database_url
+    from src.common.db import checkout_for_write, make_pool
 
 POOL_MIN_CONN = 1
 POOL_MAX_CONN = 5
@@ -27,17 +25,16 @@ _pg_pool = None
 def _get_pool():
     global _pg_pool
     if _pg_pool is None:
-        _pg_pool = psycopg2.pool.SimpleConnectionPool(POOL_MIN_CONN, POOL_MAX_CONN, get_database_url())
+        _pg_pool = make_pool(POOL_MIN_CONN, POOL_MAX_CONN)
     return _pg_pool
 
 MESSAGE_CONTENT_MAX_LEN = 1000
 
 
 def store_feedback(user_id: str, session_id: str, message_content: str, rating: str) -> None:
+    # Write: pinged on checkout, never retried after the INSERT is sent (see src/common/db.py).
     truncated = (message_content or "")[:MESSAGE_CONTENT_MAX_LEN]
-    pool = _get_pool()
-    conn = pool.getconn()
-    try:
+    with checkout_for_write(_get_pool()) as conn:
         with conn.cursor() as cur:
             cur.execute(
                 "INSERT INTO feedback (user_id, session_id, message_content, rating) "
@@ -45,5 +42,3 @@ def store_feedback(user_id: str, session_id: str, message_content: str, rating: 
                 (user_id, session_id, truncated, rating),
             )
         conn.commit()
-    finally:
-        pool.putconn(conn)

@@ -18,11 +18,16 @@ code change: set DATABASE_URL (or SUPABASE_DB_URL) and nothing in the
 calling code changes.
 """
 
+import logging
 import os
+from contextlib import contextmanager
 from urllib.parse import quote
 
 import psycopg2
+import psycopg2.pool
 from dotenv import load_dotenv
+
+logger = logging.getLogger("db")
 
 load_dotenv()  # so a standalone script (e.g. scripts/migrate_to_supabase.py)
 # picks up .env without having to remember to call this itself
@@ -75,3 +80,106 @@ def connect_supabase():
             "SUPABASE_DB_URL=postgresql://postgres:<password>@db.<project-ref>.supabase.co:5432/postgres"
         )
     return psycopg2.connect(url)
+
+
+# --- Pooled connections -------------------------------------------------
+#
+# Supabase closes idle connections on its side. psycopg2 doesn't notice
+# until the next query fails with OperationalError ("server closed the
+# connection unexpectedly"), and SimpleConnectionPool will hand that dead
+# connection out again on the next getconn(). The helpers below handle it.
+#
+# Retry policy. The split between reads and writes is deliberate:
+#
+# - Reads (feature lookup, user lookups) are idempotent. If the connection
+#   dies, run_read() discards it and retries the query once on a fresh one.
+#
+# - Writes (signup, feedback, audit) are NOT retried after the statement
+#   has been sent. The connection can die after the server has committed
+#   but before the client receives the acknowledgement, so a blind retry
+#   could insert the same row twice. Instead, checkout_for_write() pings
+#   the connection before any write is sent and replaces it if the ping
+#   fails. Nothing has been written at that point, so swapping connections
+#   can't duplicate anything.
+#
+# TCP keepalives make a dead connection show up sooner, so the pool
+# notices an idle drop before a user request does.
+
+KEEPALIVE_OPTIONS = {
+    "keepalives": 1,
+    "keepalives_idle": 30,
+    "keepalives_interval": 10,
+    "keepalives_count": 3,
+}
+
+# Errors meaning the connection itself is gone, as opposed to the statement
+# failing (IntegrityError, etc.), which leaves the connection usable.
+CONNECTION_LOST_ERRORS = (psycopg2.OperationalError, psycopg2.InterfaceError)
+
+
+def make_pool(minconn, maxconn):
+    """A SimpleConnectionPool whose connections use TCP keepalives."""
+    return psycopg2.pool.SimpleConnectionPool(minconn, maxconn, get_database_url(), **KEEPALIVE_OPTIONS)
+
+
+def _return_connection(pool, conn, lost):
+    # close=True for a dead connection, so the pool doesn't keep it. For
+    # any other error, plain putconn: psycopg2 rolls back an open transaction.
+    pool.putconn(conn, close=lost)
+
+
+def _ping(conn):
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT 1")
+        return True
+    except CONNECTION_LOST_ERRORS:
+        return False
+
+
+def run_read(pool, query):
+    """Runs query(conn) and returns its result. Read-only, idempotent use
+    only: if the connection is lost, it is discarded and the query runs
+    once more on a fresh connection. Do not use this for writes."""
+    for attempt in (1, 2):
+        conn = pool.getconn()
+        try:
+            result = query(conn)
+        except CONNECTION_LOST_ERRORS:
+            _return_connection(pool, conn, lost=True)
+            if attempt == 2:
+                raise
+            logger.warning("Pooled connection lost during read; retrying once on a fresh connection")
+            continue
+        except Exception:
+            _return_connection(pool, conn, lost=False)
+            raise
+        _return_connection(pool, conn, lost=False)
+        return result
+
+
+@contextmanager
+def checkout_for_write(pool):
+    """Context manager yielding a pooled connection that has been pinged
+    before use. The caller runs its write and commits inside the block. A
+    lost connection is discarded and the error propagates, with no retry of
+    the write itself (see the policy comment above)."""
+    conn = None
+    for _ in range(2):
+        candidate = pool.getconn()
+        if _ping(candidate):
+            conn = candidate
+            break
+        _return_connection(pool, candidate, lost=True)
+    if conn is None:
+        raise psycopg2.OperationalError("could not get a live connection from the pool")
+
+    try:
+        yield conn
+    except CONNECTION_LOST_ERRORS:
+        _return_connection(pool, conn, lost=True)
+        raise
+    except Exception:
+        _return_connection(pool, conn, lost=False)
+        raise
+    _return_connection(pool, conn, lost=False)

@@ -36,20 +36,19 @@ import uuid
 import jwt
 import psycopg2
 import psycopg2.errors
-import psycopg2.pool
 from dotenv import load_dotenv
 from fastapi import Depends, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from passlib.context import CryptContext
 
 try:
-    from src.common.db import get_database_url
+    from src.common.db import checkout_for_write, make_pool, run_read
 except ImportError:
     import sys
     from pathlib import Path
 
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
-    from src.common.db import get_database_url
+    from src.common.db import checkout_for_write, make_pool, run_read
 
 load_dotenv()
 
@@ -78,7 +77,7 @@ _pg_pool = None
 def _get_pool():
     global _pg_pool
     if _pg_pool is None:
-        _pg_pool = psycopg2.pool.SimpleConnectionPool(POOL_MIN_CONN, POOL_MAX_CONN, get_database_url())
+        _pg_pool = make_pool(POOL_MIN_CONN, POOL_MAX_CONN)
     return _pg_pool
 
 # HTTPBearer's default auto_error=True raises 403 (not 401) when the
@@ -107,10 +106,9 @@ def create_access_token(user_id: str, email: str) -> str:
 
 
 def create_user(email: str, hashed_password: str) -> dict:
+    # Write: checkout_for_write, not run_read - see the policy in src/common/db.py.
     user_id = str(uuid.uuid4())
-    pool = _get_pool()
-    conn = pool.getconn()
-    try:
+    with checkout_for_write(_get_pool()) as conn:
         with conn.cursor() as cur:
             try:
                 cur.execute(
@@ -123,34 +121,28 @@ def create_user(email: str, hashed_password: str) -> dict:
                 raise EmailAlreadyExistsError(email) from None
             row = cur.fetchone()
         conn.commit()
-    finally:
-        pool.putconn(conn)
     return {"id": str(row[0]), "email": row[1], "created_at": row[2]}
 
 
 def get_user_by_email(email: str) -> dict | None:
-    pool = _get_pool()
-    conn = pool.getconn()
-    try:
+    def _query(conn):
         with conn.cursor() as cur:
             cur.execute("SELECT id, email, hashed_password FROM users WHERE email = %s", (email,))
-            row = cur.fetchone()
-    finally:
-        pool.putconn(conn)
+            return cur.fetchone()
+
+    row = run_read(_get_pool(), _query)
     if row is None:
         return None
     return {"id": str(row[0]), "email": row[1], "hashed_password": row[2]}
 
 
 def get_user_by_id(user_id: str) -> dict | None:
-    pool = _get_pool()
-    conn = pool.getconn()
-    try:
+    def _query(conn):
         with conn.cursor() as cur:
             cur.execute("SELECT id, email FROM users WHERE id = %s", (user_id,))
-            row = cur.fetchone()
-    finally:
-        pool.putconn(conn)
+            return cur.fetchone()
+
+    row = run_read(_get_pool(), _query)
     if row is None:
         return None
     return {"id": str(row[0]), "email": row[1]}
@@ -178,18 +170,13 @@ def log_audit(user_id: str, endpoint: str, request_summary: str) -> None:
     """Best-effort: a logging failure shouldn't take down the request it's
     logging, so this only warns on error rather than raising."""
     truncated = (request_summary or "")[:REQUEST_SUMMARY_MAX_LEN]
-    conn = None
     try:
-        pool = _get_pool()
-        conn = pool.getconn()
-        with conn.cursor() as cur:
-            cur.execute(
-                "INSERT INTO audit_logs (user_id, endpoint, request_summary) VALUES (%s, %s, %s)",
-                (user_id, endpoint, truncated),
-            )
-        conn.commit()
+        with checkout_for_write(_get_pool()) as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "INSERT INTO audit_logs (user_id, endpoint, request_summary) VALUES (%s, %s, %s)",
+                    (user_id, endpoint, truncated),
+                )
+            conn.commit()
     except Exception:
         logger.warning("Failed to write audit log for user=%s endpoint=%s", user_id, endpoint, exc_info=True)
-    finally:
-        if conn is not None:
-            pool.putconn(conn)

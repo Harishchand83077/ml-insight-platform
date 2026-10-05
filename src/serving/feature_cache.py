@@ -9,7 +9,6 @@ import json
 import logging
 
 import psycopg2.extras
-import psycopg2.pool
 from prometheus_client import Counter
 
 # Absolute import when loaded as part of the src package (e.g. by
@@ -19,14 +18,14 @@ from prometheus_client import Counter
 # `python src/serving/test_cache.py`, which does `from feature_cache
 # import ...` and never puts the project root on sys.path itself).
 try:
-    from src.common.db import get_database_url
+    from src.common.db import make_pool, run_read
     from src.common.redis_client import get_redis_client
 except ImportError:
     import sys
     from pathlib import Path
 
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
-    from src.common.db import get_database_url
+    from src.common.db import make_pool, run_read
     from src.common.redis_client import get_redis_client
 
 CACHE_TTL_SECONDS = 300
@@ -51,7 +50,7 @@ _pg_pool = None
 def _get_pool():
     global _pg_pool
     if _pg_pool is None:
-        _pg_pool = psycopg2.pool.SimpleConnectionPool(POOL_MIN_CONN, POOL_MAX_CONN, get_database_url())
+        _pg_pool = make_pool(POOL_MIN_CONN, POOL_MAX_CONN)
     return _pg_pool
 
 
@@ -75,14 +74,13 @@ def get_customer_features(customer_id):
 
     logger.info("Cache MISS for %s", customer_id)
     FEATURE_CACHE_COUNTER.labels(result="miss").inc()
-    pool = _get_pool()
-    conn = pool.getconn()
-    try:
+    def _query(conn):
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute("SELECT * FROM customer_features WHERE customer_id = %s", (customer_id,))
-            row = cur.fetchone()
-    finally:
-        pool.putconn(conn)
+            return cur.fetchone()
+
+    # Read-only lookup, so run_read may retry it once on a fresh connection.
+    row = run_read(_get_pool(), _query)
 
     if row is None:
         return None, False
