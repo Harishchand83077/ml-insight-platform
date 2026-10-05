@@ -16,8 +16,24 @@ entry when that first message was itself a genuine cache miss.
 
 Entries are stored in Redis as a capped list (max 200) under key
 "semantic_cache", each a JSON object: {question, embedding, response,
-tool_calls}. Newest entries are pushed to the head; LTRIM evicts the
-oldest once the cap is reached.
+tool_calls, created_at}. Newest entries are pushed to the head; LTRIM evicts
+the oldest once the cap is reached.
+
+Two exclusions, both enforced here so every caller gets them:
+
+- Questions containing a customer ID (\\d{4}-[A-Za-z]{5}) are never read
+  from or written to the cache. Their answers depend on per-customer live
+  data, and the embedding can't reliably tell customer IDs or contract
+  terms apart: "What if customer 2691-NZETQ switched to a 2-year contract?"
+  and the same question with "1-year" scored 0.975 against each other, above
+  the threshold. The feature cache already makes repeat customer lookups
+  cheap, so skipping this cache costs little.
+- Entries older than TTL_SECONDS (24 hours) are ignored on read. A
+  knowledge-base rebuild or a change in customer data then can't keep
+  serving answers from before it for longer than a day. Entries without a
+  created_at field, written before this check existed, count as expired.
+  Expired entries stay in the list until LTRIM evicts them; they are never
+  returned.
 
 Both public functions are async and run their embed_query() call via
 asyncio.to_thread - that call is CPU-bound (a local sentence-transformers
@@ -30,6 +46,8 @@ fast network round trips, not the CPU-bound part this exists to offload.
 import asyncio
 import json
 import logging
+import re
+import time
 
 import numpy as np
 from prometheus_client import Counter
@@ -57,6 +75,8 @@ logger = logging.getLogger("semantic_cache")
 CACHE_KEY = "semantic_cache"
 MAX_ENTRIES = 200
 SIMILARITY_THRESHOLD = 0.90
+TTL_SECONDS = 24 * 60 * 60
+CUSTOMER_ID_PATTERN = re.compile(r"\d{4}-[A-Za-z]{5}")
 
 SEMANTIC_CACHE_HIT_COUNTER = Counter(
     "semantic_cache_hits_total",
@@ -73,11 +93,28 @@ def _cosine_similarity(a, b):
     return float(np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b)))
 
 
+def contains_customer_id(question):
+    """True if the question names a specific customer (e.g. 7590-VHVEG).
+    Such questions bypass the semantic cache entirely - see the module docstring."""
+    return CUSTOMER_ID_PATTERN.search(question) is not None
+
+
+def _is_fresh(entry, now):
+    return now - entry.get("created_at", 0) < TTL_SECONDS
+
+
 async def check_semantic_cache(question):
     """Returns {"response": str, "tool_calls": list} on a hit above the
-    similarity threshold, else None."""
+    similarity threshold, else None. Always None, with no Redis or embedding
+    work, for questions that contain a customer ID."""
+    if contains_customer_id(question):
+        return None
+
     raw_entries = _get_redis_client().lrange(CACHE_KEY, 0, -1)
-    if not raw_entries:
+    entries = [json.loads(raw) for raw in raw_entries]
+    now = time.time()
+    entries = [entry for entry in entries if _is_fresh(entry, now)]
+    if not entries:
         SEMANTIC_CACHE_MISS_COUNTER.inc()
         return None
 
@@ -85,8 +122,7 @@ async def check_semantic_cache(question):
 
     best_score = -1.0
     best_entry = None
-    for raw in raw_entries:
-        entry = json.loads(raw)
+    for entry in entries:
         score = _cosine_similarity(query_embedding, entry["embedding"])
         if score > best_score:
             best_score = score
@@ -106,10 +142,18 @@ async def check_semantic_cache(question):
 
 
 async def store_in_semantic_cache(question, response, tool_calls):
+    if contains_customer_id(question):
+        return
     r = _get_redis_client()
     embedding = await asyncio.to_thread(get_embedder().embed_query, question)
     entry = json.dumps(
-        {"question": question, "embedding": embedding, "response": response, "tool_calls": tool_calls}
+        {
+            "question": question,
+            "embedding": embedding,
+            "response": response,
+            "tool_calls": tool_calls,
+            "created_at": time.time(),
+        }
     )
     r.lpush(CACHE_KEY, entry)
     r.ltrim(CACHE_KEY, 0, MAX_ENTRIES - 1)  # keep newest MAX_ENTRIES, evict the rest

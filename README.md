@@ -130,7 +130,7 @@ build produced 128 chunks. Each retrieved chunk is labeled
 
 - **Authentication.** `POST /auth/signup` and `POST /auth/login`. Passwords are hashed with bcrypt through passlib; `bcrypt` is pinned to 4.0.1 because passlib 1.7.4 breaks on newer bcrypt. Tokens are HS256 JWTs from PyJWT, valid for 24 hours. Login failures return a generic 401. `/predict`, `/chat`, `/feedback`, and `DELETE /chat/{session_id}` require a token.
 - **Audit log.** Each `/predict` and `/chat` call writes a row to `audit_logs`. Logging is best-effort and never fails the request.
-- **Caching.** Feature lookups are cache-aside in Redis with a 300 s TTL and a Postgres fallback through a connection pool. The semantic response cache covers the first message of each session only, using cosine similarity (threshold 0.90, capped at 200 entries).
+- **Caching.** Feature lookups are cache-aside in Redis with a 300 s TTL and a Postgres fallback through a connection pool. The semantic response cache covers the first message of each session only, using cosine similarity (threshold 0.90, capped at 200 entries). Entries expire after 24 hours, and questions that name a customer ID bypass the cache entirely.
 - **Test-only cache bypass.** `X-Cache-Bypass` skips the semantic cache, but only when it matches the server's `CACHE_BYPASS_TOKEN`. If the server has no token set, the header is rejected. See `CLAUDE.md`.
 - **Chat sessions.** Per-session history is kept in process memory (see Known limitations).
 - **Feedback.** Thumbs up or down per assistant message, stored in Postgres with a `CHECK` constraint on the rating.
@@ -200,7 +200,7 @@ question set has 17 items: 6 exact-term, 8 paraphrase, and 3 unanswerable.
 - **Single-instance scale.** Render's free tier runs one container, and the app runs one uvicorn worker. Concurrency is limited by CPU quota (0.1 CPU) and memory.
 - **Hybrid search evaluated and rejected.** BM25 + vector fusion was tested at two weightings. At 0.5/0.5 it gave no exact-term gain and was worse elsewhere. At 0.7/0.3 it raised exact-term hit@1 from 0.67 to 1.00, but dropped paraphrase hit@1 to 0.625, and all three unanswerable questions were flagged. The live tool uses vector search only. The `hybrid_retriever.py` module and `rank_bm25` dependency remain. The decision and its numbers are recorded in `docs/decisions.md`.
 - **JWT in React state, not `localStorage`.** This is deliberate. The cost is that a page refresh logs the user out.
-- **Semantic cache scope.** Only the first message of each session is eligible. The cache matches reworded questions too, so tests need the bypass header or clearly different wording.
+- **Semantic cache scope.** Only the first message of each session is eligible, and questions with a customer ID never use it. The cache matches reworded questions too. For other tests, use the bypass header or clearly different wording. Known gap: contract-term words barely move the embedding, so two what-if questions that differ only in "1-year" vs "2-year" can still collide. The ID rule covers questions that name a customer; a what-if question without a customer ID can still hit the wrong entry.
 - **Explanations are associational.** Contributions and what-if numbers describe the model's output. They are not causal effects. The retention rules are hand-written and unvalidated.
 - **Synthetic data.** Metrics and RAG results describe the synthetic dataset and the invented company documents.
 - **Not done:** hyperparameter tuning, a fairness audit, a durable session store, and multi-worker serving.

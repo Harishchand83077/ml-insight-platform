@@ -11,6 +11,7 @@ not worth a pytest-asyncio dependency for two call sites.
 import asyncio
 import json
 import math
+import time
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -41,13 +42,14 @@ def _vector_at_similarity(similarity):
     return [similarity, math.sqrt(1 - similarity**2)]
 
 
-def _cached_entry_json(question, similarity_to_query, response="cached response", tool_calls=None):
+def _cached_entry_json(question, similarity_to_query, response="cached response", tool_calls=None, created_at=None):
     return json.dumps(
         {
             "question": question,
             "embedding": _vector_at_similarity(similarity_to_query),
             "response": response,
             "tool_calls": tool_calls or [{"tool": "predict_churn_tool", "args": {"customer_id": "1234"}}],
+            "created_at": time.time() if created_at is None else created_at,
         }
     )
 
@@ -138,3 +140,116 @@ class TestStoreInSemanticCache:
         fake_redis.ltrim.assert_called_once_with(
             semantic_cache.CACHE_KEY, 0, semantic_cache.MAX_ENTRIES - 1
         )
+        assert stored["created_at"] == pytest.approx(time.time(), abs=5)
+
+
+class TestCustomerIdExclusion:
+    @pytest.mark.parametrize(
+        "question",
+        [
+            "What's the churn risk for customer 7590-VHVEG?",
+            "What if customer 2691-NZETQ switched to a 2-year contract?",
+            "2691-NZETQ",
+        ],
+    )
+    def test_id_detected(self, question):
+        assert semantic_cache.contains_customer_id(question)
+
+    @pytest.mark.parametrize(
+        "question",
+        [
+            "What if they switched to a 2-year contract?",
+            "What percentage of month-to-month customers churn?",
+            "Which contract type churns most in 2024?",
+            "Which contract type churns most, 2-year or 1-year?",
+        ],
+    )
+    def test_no_id_detected(self, question):
+        assert not semantic_cache.contains_customer_id(question)
+
+    def test_id_question_never_reads_cache(self):
+        # Cache holds an identical-meaning entry that would otherwise match exactly.
+        entry = _cached_entry_json("What's the churn risk for customer 7590-VHVEG?", similarity_to_query=1.0)
+        redis_patch, emb_patch, fake_redis, fake_embeddings = _patch_redis_and_embeddings([entry])
+
+        with redis_patch, emb_patch:
+            result = asyncio.run(semantic_cache.check_semantic_cache(
+                "What's the churn risk for customer 2691-NZETQ?"
+            ))
+
+        assert result is None
+        fake_redis.lrange.assert_not_called()
+        fake_embeddings.embed_query.assert_not_called()
+
+    def test_id_question_never_writes_cache(self):
+        fake_redis = MagicMock()
+        fake_embeddings = MagicMock()
+
+        with patch.object(semantic_cache, "_get_redis_client", return_value=fake_redis), \
+             patch.object(semantic_cache, "get_embedder", return_value=fake_embeddings):
+            asyncio.run(semantic_cache.store_in_semantic_cache(
+                "What if customer 2691-NZETQ switched to a 2-year contract?",
+                "a response",
+                [],
+            ))
+
+        fake_redis.lpush.assert_not_called()
+        fake_redis.ltrim.assert_not_called()
+        fake_embeddings.embed_query.assert_not_called()
+
+
+class TestRewordingStillHits:
+    def test_reworded_non_id_question_hits(self):
+        entry = _cached_entry_json(
+            "What percentage of month-to-month customers churn?",
+            similarity_to_query=0.92,
+            response="the churn rate answer",
+        )
+        redis_patch, emb_patch, _, _ = _patch_redis_and_embeddings([entry])
+
+        with redis_patch, emb_patch:
+            result = asyncio.run(semantic_cache.check_semantic_cache(
+                "What share of customers on month-to-month contracts churn?"
+            ))
+
+        assert result is not None
+        assert result["response"] == "the churn rate answer"
+
+
+class TestTtl:
+    def test_expired_entry_is_ignored(self):
+        old = time.time() - semantic_cache.TTL_SECONDS - 60
+        entry = _cached_entry_json("an old question", similarity_to_query=1.0, created_at=old)
+        redis_patch, emb_patch, _, _ = _patch_redis_and_embeddings([entry])
+
+        with redis_patch, emb_patch:
+            result = asyncio.run(semantic_cache.check_semantic_cache("an old question"))
+
+        assert result is None
+
+    def test_entry_without_timestamp_is_ignored(self):
+        legacy = json.dumps({
+            "question": "a pre-TTL question",
+            "embedding": _vector_at_similarity(1.0),
+            "response": "legacy answer",
+            "tool_calls": [],
+        })
+        redis_patch, emb_patch, _, _ = _patch_redis_and_embeddings([legacy])
+
+        with redis_patch, emb_patch:
+            result = asyncio.run(semantic_cache.check_semantic_cache("a pre-TTL question"))
+
+        assert result is None
+
+    def test_fresh_match_wins_over_expired_better_match(self):
+        old = time.time() - semantic_cache.TTL_SECONDS - 60
+        entries = [
+            _cached_entry_json("expired exact", similarity_to_query=1.0, response="stale", created_at=old),
+            _cached_entry_json("fresh near match", similarity_to_query=0.95, response="fresh"),
+        ]
+        redis_patch, emb_patch, _, _ = _patch_redis_and_embeddings(entries)
+
+        with redis_patch, emb_patch:
+            result = asyncio.run(semantic_cache.check_semantic_cache("a question"))
+
+        assert result["response"] == "fresh"
