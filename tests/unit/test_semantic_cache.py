@@ -126,7 +126,7 @@ class TestStoreInSemanticCache:
         with patch.object(semantic_cache, "_get_redis_client", return_value=fake_redis), \
              patch.object(semantic_cache, "get_embedder", return_value=fake_embeddings):
             asyncio.run(semantic_cache.store_in_semantic_cache(
-                "a new question", "a response", [{"tool": "predict_churn_tool", "args": {}}]
+                "a new question", "a response", [{"tool": "query_project_docs_tool", "args": {}}]
             ))
 
         fake_redis.lpush.assert_called_once()
@@ -196,6 +196,56 @@ class TestCustomerIdExclusion:
         fake_redis.lpush.assert_not_called()
         fake_redis.ltrim.assert_not_called()
         fake_embeddings.embed_query.assert_not_called()
+
+
+class TestDataDependentAnswersNotStored:
+    @pytest.mark.parametrize(
+        "tool_calls",
+        [
+            [{"tool": "predict_churn_tool", "args": {}}],
+            [{"tool": "get_churn_rate_by_column", "args": {"column": "contract"}}],
+            [{"tool": "simulate_churn_tool", "args": {}}],
+            [{"tool": "explain_churn_tool", "args": {}}],
+            [{"tool": "recommend_retention_tool", "args": {}}],
+            [{"tool": "query_project_docs_tool", "args": {}}, {"tool": "get_customer_count", "args": {}}],
+        ],
+    )
+    def test_answer_with_a_data_tool_is_not_stored(self, tool_calls):
+        fake_redis = MagicMock()
+        fake_embeddings = MagicMock()
+
+        with patch.object(semantic_cache, "_get_redis_client", return_value=fake_redis), \
+             patch.object(semantic_cache, "get_embedder", return_value=fake_embeddings):
+            asyncio.run(semantic_cache.store_in_semantic_cache("a general question", "a response", tool_calls))
+
+        fake_redis.lpush.assert_not_called()
+        fake_embeddings.embed_query.assert_not_called()
+
+    def test_answer_with_no_tool_calls_is_stored(self):
+        fake_redis = MagicMock()
+        fake_embeddings = MagicMock()
+        fake_embeddings.embed_query.return_value = [0.1, 0.2]
+
+        with patch.object(semantic_cache, "_get_redis_client", return_value=fake_redis), \
+             patch.object(semantic_cache, "get_embedder", return_value=fake_embeddings):
+            asyncio.run(semantic_cache.store_in_semantic_cache("what is a churn model?", "an answer", []))
+
+        fake_redis.lpush.assert_called_once()
+
+    def test_read_still_hits_entries_stored_before_this_rule(self):
+        # Reads are unchanged: an entry already in Redis is still served until it expires.
+        entry = _cached_entry_json(
+            "a question answered earlier",
+            similarity_to_query=0.95,
+            response="old answer",
+            tool_calls=[{"tool": "predict_churn_tool", "args": {}}],
+        )
+        redis_patch, emb_patch, _, _ = _patch_redis_and_embeddings([entry])
+
+        with redis_patch, emb_patch:
+            result = asyncio.run(semantic_cache.check_semantic_cache("a question answered earlier, reworded"))
+
+        assert result is not None
 
 
 class TestRewordingStillHits:

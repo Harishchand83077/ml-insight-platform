@@ -28,6 +28,12 @@ Two exclusions, both enforced here so every caller gets them:
   and the same question with "1-year" scored 0.975 against each other, above
   the threshold. The feature cache already makes repeat customer lookups
   cheap, so skipping this cache costs little.
+- Only answers whose tool calls were all query_project_docs_tool (or with
+  no tool calls) are written. Answers that used SQL, prediction, what-if,
+  explain, or retention tools are never stored, because their parameters
+  (customer, contract term, metric name) are what the embedding can't tell
+  apart. Reads are unchanged, so entries written before this rule remain
+  readable until they expire.
 - Entries older than TTL_SECONDS (24 hours) are ignored on read. A
   knowledge-base rebuild or a change in customer data then can't keep
   serving answers from before it for longer than a day. Entries without a
@@ -77,6 +83,7 @@ MAX_ENTRIES = 200
 SIMILARITY_THRESHOLD = 0.90
 TTL_SECONDS = 24 * 60 * 60
 CUSTOMER_ID_PATTERN = re.compile(r"\d{4}-[A-Za-z]{5}")
+DOCS_TOOL_NAME = "query_project_docs_tool"
 
 SEMANTIC_CACHE_HIT_COUNTER = Counter(
     "semantic_cache_hits_total",
@@ -141,8 +148,22 @@ async def check_semantic_cache(question):
     return None
 
 
+def is_cacheable_answer(tool_calls):
+    """Only answers grounded purely in the project docs (or with no tool calls
+    at all) are cacheable. Data-dependent answers (SQL, prediction, what-if,
+    explain, retention) are never stored: the embedding can't distinguish
+    their parameters, so a near-identical question with different numbers
+    would get the wrong stored answer. Measured: "Why did you choose PR-AUC
+    over accuracy?" vs "...ROC-AUC over accuracy?" scored 0.907, above the
+    threshold, and the closest legitimate rewording scored 0.910, so no
+    threshold separates them."""
+    return all(call.get("tool") == DOCS_TOOL_NAME for call in tool_calls)
+
+
 async def store_in_semantic_cache(question, response, tool_calls):
     if contains_customer_id(question):
+        return
+    if not is_cacheable_answer(tool_calls):
         return
     r = _get_redis_client()
     embedding = await asyncio.to_thread(get_embedder().embed_query, question)
