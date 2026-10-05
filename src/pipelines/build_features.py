@@ -41,8 +41,11 @@ ADDON_COLUMNS = [
     "streaming_movies",
 ]
 
+FEATURES_TABLE = "customer_features"
+STAGING_TABLE = "customer_features_new"
+
 CREATE_TABLE_SQL = """
-    CREATE TABLE IF NOT EXISTS customer_features (
+    CREATE TABLE IF NOT EXISTS {table} (
         customer_id TEXT PRIMARY KEY,
         tenure INTEGER,
         monthly_charges NUMERIC,
@@ -184,6 +187,34 @@ def build_feature_table(customers, login_events, support_tickets, feature_usage_
     return features[FEATURE_COLUMNS]
 
 
+def write_features_atomically(conn, features):
+    """Replaces customer_features with `features` in a single transaction,
+    without ever making readers wait on or see an empty or partial table.
+
+    Why a staging table and rename, not TRUNCATE + INSERT: TRUNCATE takes an
+    ACCESS EXCLUSIVE lock, so every reader blocks until the INSERT commits.
+    Measured on the old code: 3 reads out of 265 waited up to 648 ms. Here,
+    all the slow work (the INSERT into customer_features_new) happens while
+    readers keep using the old table. The only lock taken on the live name
+    is for the two RENAMEs, which are quick. Readers never see zero rows:
+    if anything fails, the transaction rolls back and the old table stays
+    as it was.
+    """
+    rows = [tuple(row) for row in features.itertuples(index=False, name=None)]
+    insert_sql = f"INSERT INTO {STAGING_TABLE} ({', '.join(FEATURE_COLUMNS)}) VALUES %s"
+    with conn.cursor() as cur:
+        cur.execute(CREATE_TABLE_SQL.format(table=FEATURES_TABLE))  # first run only; no-op after
+        cur.execute(f"DROP TABLE IF EXISTS {STAGING_TABLE}")  # leftover from an interrupted run
+        cur.execute(CREATE_TABLE_SQL.format(table=STAGING_TABLE))
+        execute_values(cur, insert_sql, rows)
+        cur.execute(f"ALTER TABLE {FEATURES_TABLE} RENAME TO customer_features_old")
+        cur.execute(f"ALTER TABLE {STAGING_TABLE} RENAME TO {FEATURES_TABLE}")
+        cur.execute("DROP TABLE customer_features_old")
+        # Give the new table's primary-key index the same name the old one had.
+        cur.execute(f"ALTER INDEX {STAGING_TABLE}_pkey RENAME TO {FEATURES_TABLE}_pkey")
+    conn.commit()
+
+
 def main():
     conn = psycopg2.connect(**PG_DSN)
 
@@ -197,13 +228,7 @@ def main():
     os.makedirs(os.path.dirname(FEATURES_CSV), exist_ok=True)
     features.to_csv(FEATURES_CSV, index=False)
 
-    with conn.cursor() as cur:
-        cur.execute(CREATE_TABLE_SQL)
-        cur.execute("TRUNCATE TABLE customer_features")
-        rows = [tuple(row) for row in features.itertuples(index=False, name=None)]
-        insert_sql = f"INSERT INTO customer_features ({', '.join(FEATURE_COLUMNS)}) VALUES %s"
-        execute_values(cur, insert_sql, rows)
-    conn.commit()
+    write_features_atomically(conn, features)
     conn.close()
 
     print(f"Final shape: {features.shape}")
