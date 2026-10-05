@@ -752,3 +752,14 @@
   after startup completes.
 
 
+## Repo hygiene pass (Week 9 close)
+
+- Found committed local artifacts: 7 log/test files at the repo root, plus 
+  a SQLite DB, generated CSVs, and HTML reports. Scanned the logs for 
+  secrets first (none found; only localhost Redis URIs) before untracking.
+- Untracked everything generated or local; kept inputs and deployment 
+  artifacts (raw dataset, models/production_model, RAG eval JSONs).
+- Verified with a clean-checkout simulation (no .env, no data/): unit 
+  suite and lint pass, and the Dockerfile copies no untracked path.
+- .gitignore had UTF-16 corruption in three places (found by checking 
+  the file byte by byte after the first instance).

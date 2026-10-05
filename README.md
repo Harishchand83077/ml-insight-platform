@@ -198,7 +198,7 @@ question set has 17 items: 6 exact-term, 8 paraphrase, and 3 unanswerable.
 - **In-memory chat sessions.** `/chat` history lives in a Python dict in the API process. It's lost on restart and not shared between instances.
 - **Local-only components.** RabbitMQ ingestion, the Celery retraining worker, MLflow tracking, Evidently reports, and the Grafana/Prometheus stack are not deployed. The served model is a file exported from MLflow, not loaded from a tracking store.
 - **Single-instance scale.** Render's free tier runs one container, and the app runs one uvicorn worker. Concurrency is limited by CPU quota (0.1 CPU) and memory.
-- **Hybrid search evaluated and rejected.** BM25 + vector fusion was tested at two weightings. At 0.5/0.5 it gave no exact-term gain and was worse elsewhere. At 0.7/0.3 it raised exact-term hit@1 from 0.67 to 1.00, but dropped paraphrase hit@1 to 0.625, and all three unanswerable questions were flagged. The live tool uses vector search only. The `hybrid_retriever.py` module and `rank_bm25` dependency remain. The decisions.md entry is in `docs/decisions.md` under "Hybrid search: tested, not adopted (Week 9)". **That entry says unanswerable flagging dropped to 0/3. The eval reports show it went from 1/3 to 3/3.** The reports are the source of truth; the entry needs correcting.
+- **Hybrid search evaluated and rejected.** BM25 + vector fusion was tested at two weightings. At 0.5/0.5 it gave no exact-term gain and was worse elsewhere. At 0.7/0.3 it raised exact-term hit@1 from 0.67 to 1.00, but dropped paraphrase hit@1 to 0.625, and all three unanswerable questions were flagged. The live tool uses vector search only. The `hybrid_retriever.py` module and `rank_bm25` dependency remain. The decision and its numbers are recorded in `docs/decisions.md`.
 - **JWT in React state, not `localStorage`.** This is deliberate. The cost is that a page refresh logs the user out.
 - **Semantic cache scope.** Only the first message of each session is eligible. The cache matches reworded questions too, so tests need the bypass header or clearly different wording.
 - **Explanations are associational.** Contributions and what-if numbers describe the model's output. They are not causal effects. The retention rules are hand-written and unvalidated.
@@ -236,7 +236,7 @@ venv\Scripts\activate            # Windows; source venv/bin/activate elsewhere
 pip install -r requirements.txt  # full dev environment
 ```
 
-**4. Data and features**
+**4. Data and features.** Only the raw dataset (`data/raw/`) is in the repo. The generated event tables, `features.csv`, and `data/processed/events.db` are gitignored and rebuilt by these steps.
 
 ```bash
 python src/data_gen/generate_events.py
@@ -284,7 +284,7 @@ npm run dev   # http://localhost:5173
 
 ```bash
 pytest tests/unit                          # no external services needed
-ruff check src tests scripts
+ruff check src tests
 pytest tests/integration --run-integration # needs Postgres, Redis, GROQ_API_KEY; makes real LLM calls
 python tests/eval/rag_eval.py              # writes reports/rag_eval_baseline.json
 python tests/eval/rag_eval.py --hybrid     # writes reports/rag_eval_hybrid.json
@@ -311,5 +311,6 @@ write values without quotes.
 - `docs/`: decision log, glossary, PRD, `knowledge_base/` (synthetic policy docs indexed for RAG), `ARCHITECTURE_SUMMARY.md`
 - `frontend/`: React chat UI
 - `tests/unit`, `tests/integration`, `tests/load`, `tests/eval`: tests, Locust, RAG evaluation
-- `reports/`: drift and load-test HTML, RAG evaluation JSON
+- `data/`: raw dataset tracked; generated event data, features, and the Chroma index are gitignored and rebuilt locally
+- `reports/`: RAG evaluation JSON tracked; drift and load-test HTML are generated locally and gitignored
 - `CLAUDE.md`: testing notes, including the cache bypass
