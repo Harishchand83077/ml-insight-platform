@@ -849,3 +849,30 @@
   stalls were connect hangs, now bounded by connect_timeout=5.
 - Empty model answers: 5/6 earlier, 0/30 later; cause unknown. Added 
   retry, fallback and a counter instead of a guess.
+
+## CI caught a mock gap hidden by local services (Week 9)
+
+- After consolidating to a shared pool, 22 tests failed in CI: they 
+  patched run_read, but the tools fetch the pool first, so the real pool 
+  tried to connect. Passed locally only because Postgres was running on 
+  localhost. 
+- Fix: autouse guard in tests/unit/conftest.py that fails any unit test 
+  attempting a real DB or Redis connection, identically on every machine. 
+  Verified with services stopped and in a clean environment before pushing.
+- Lesson: "passes on my machine" is meaningless when the machine has live 
+  services. The clean-environment simulation has to be re-run after every 
+  change that touches connections, not just once.
+  Update README.md and docs/ARCHITECTURE_SUMMARY.md to reflect the final 
+state. Take every number from docs/decisions.md and reports/, not from 
+memory:
+
+1. Known limitations: replace stale items. Add what's now true: Redis 
+   fails open (0.5s/1.0s timeouts), shared DB pool of 10 under Supabase's 
+   session limit of 15 with a 2s bounded wait returning 503, agent 
+   recursion limit 12, Groq timeout 30s. Keep what's still limitations: 
+   512MB headroom, in-memory chat sessions, ingestion not deployed.
+2. Add a short "Reliability" section: the failure modes tested and the 
+   measured results (OOM before/after, session-pooler exhaustion test, 
+   semantic-cache collision measurement, atomic rebuild).
+3. Confirm the tool count and the live URLs are correct.
+4. Don't add any claim that isn't backed by a decisions.md entry.
