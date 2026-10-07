@@ -121,6 +121,49 @@ def trend_duration_low(rng, trend):
     return rng.uniform(1.05, 1.3)  # increasing
 
 
+# --- Per-event draws, factored out of the loops below so other callers
+# (src/live/generator.py's live event stream) can reuse the exact same
+# churn-conditioned model for a single event instead of forking a second
+# copy of these numbers. Each one is a straight extraction of an expression
+# that was already here - same rng calls, same arguments, same order - so
+# the batch CSVs this script produces are unaffected.
+
+def ticket_base_lambda(tech_support):
+    """Poisson mean for a customer's support-ticket count: higher when they
+    have no TechSupport add-on (more issues end up as tickets instead of
+    being self-served)."""
+    base_lambda = 1.2
+    if tech_support == "No":
+        base_lambda += 1.3
+    return base_lambda
+
+
+def ticket_resolve_prob(rng, churned):
+    """A customer's own probability that any given ticket gets resolved,
+    centered lower for churned customers but with enough spread that groups
+    overlap."""
+    return float(np.clip(rng.normal(0.60 if churned else 0.82, 0.16), 0.05, 0.98))
+
+
+def ticket_resolution_mean(rng, churned):
+    """A customer's own mean resolution time in hours, centered higher for
+    churned customers."""
+    return float(rng.lognormal(mean=np.log(18.0 if churned else 8.0), sigma=0.7))
+
+
+def ticket_resolution_time(rng, resolution_mean):
+    """One ticket's resolution_time_hours, drawn around the customer's own
+    mean (two layers of noise instead of one fixed value per group)."""
+    return round(float(rng.lognormal(mean=np.log(resolution_mean), sigma=0.5)), 2)
+
+
+def feature_usage_lambda(rng, churned):
+    """A customer's own usage-count rate for an active add-on service,
+    centered lower for churned customers but overlapping substantially with
+    non-churned customers' rates."""
+    return float(rng.lognormal(mean=np.log(3.0 if churned else 5.0), sigma=0.6))
+
+
 def generate_login_events(rng, customers):
     rows = []
     days_ago = np.arange(WINDOW_DAYS)  # 0 = today, WINDOW_DAYS-1 = oldest
@@ -162,9 +205,7 @@ def generate_support_tickets(rng, customers):
 
     for cust in customers:
         churned = cust["Churn"] == "Yes"
-        base_lambda = 1.2
-        if cust["TechSupport"] == "No":
-            base_lambda += 1.3
+        base_lambda = ticket_base_lambda(cust["TechSupport"])
 
         n_tickets = int(np.clip(rng.poisson(base_lambda), 0, 5))
         if n_tickets == 0:
@@ -172,18 +213,16 @@ def generate_support_tickets(rng, customers):
 
         timestamps = random_timestamps(rng, uniform_weights, n_tickets)
 
-        resolve_prob = float(np.clip(rng.normal(0.60 if churned else 0.82, 0.16), 0.05, 0.98))
+        resolve_prob = ticket_resolve_prob(rng, churned)
         resolved_flags = rng.random(n_tickets) < resolve_prob
 
         # per-customer mean resolution time, then per-ticket noise around it
-        resolution_mean = float(rng.lognormal(mean=np.log(18.0 if churned else 8.0), sigma=0.7))
+        resolution_mean = ticket_resolution_mean(rng, churned)
         categories = rng.choice(TICKET_CATEGORIES, size=n_tickets)
 
         for ts, resolved, category in zip(timestamps, resolved_flags, categories):
             resolution_time = (
-                round(float(rng.lognormal(mean=np.log(resolution_mean), sigma=0.5)), 2)
-                if resolved
-                else np.nan
+                ticket_resolution_time(rng, resolution_mean) if resolved else np.nan
             )
             rows.append(
                 {
@@ -206,7 +245,7 @@ def generate_feature_usage_logs(rng, customers):
         churned = cust["Churn"] == "Yes"
         n_events_range = (3, 10) if churned else (4, 14)
         # per-customer usage rate, wide enough to overlap the other group's range
-        usage_lambda = float(rng.lognormal(mean=np.log(3.0 if churned else 5.0), sigma=0.6))
+        usage_lambda = feature_usage_lambda(rng, churned)
 
         for service in ADDON_SERVICES:
             if cust[service] != "Yes":
