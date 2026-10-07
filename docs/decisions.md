@@ -876,3 +876,19 @@ memory:
    semantic-cache collision measurement, atomic rebuild).
 3. Confirm the tool count and the live URLs are correct.
 4. Don't add any claim that isn't backed by a decisions.md entry.
+
+## Live stream, stage 1 (Week 10)
+
+- Local generator plus control API publish churn-conditioned events 
+  (with an optional drift mode) into RabbitMQ and local Postgres. A 
+  guard refuses to run against any non-local database host, so the 
+  stream can't touch production.
+- Consumer is now idempotent: event_id unique index, INSERT ON CONFLICT 
+  DO NOTHING, ack only after commit. Verified by killing the consumer 
+  mid-stream: 235 redelivered messages, published == landed on all 
+  three tables, zero duplicates.
+- Refactored the batch generator into pure functions; regenerated 
+  CSVs were byte-identical to the originals.
+- Open risk found before stage 2: live events use wall-clock time while 
+  historical data is from 2024, which can distort windowed features. 
+  Fix: a simulated clock and an as_of parameter.
