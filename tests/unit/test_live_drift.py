@@ -57,7 +57,8 @@ class TestNoReferenceCachedYet:
 
 class TestResponseShape:
     def test_shape_once_a_reference_is_cached(self):
-        drift._reference = pd.DataFrame({"tenure": [1, 2, 3]})
+        view_columns = ["tenure", "monthly_charges", "avg_usage_count"]
+        drift._reference = pd.DataFrame({c: [1, 2, 3] for c in view_columns})
         fake_snapshot = MagicMock()
         fake_snapshot.dict.return_value = _fake_snapshot_dict(
             [
@@ -67,7 +68,8 @@ class TestResponseShape:
             ]
         )
 
-        with patch.object(drift, "_load_current", return_value=pd.DataFrame({"tenure": [1]})), \
+        with patch.object(drift, "DRIFT_VIEW_COLUMNS", view_columns), \
+             patch.object(drift, "_load_current", return_value=pd.DataFrame({c: [1] for c in view_columns})), \
              patch.object(drift, "psycopg2") as fake_psycopg2, \
              patch.object(drift, "Report") as fake_report_cls:
             fake_psycopg2.connect.return_value = MagicMock()
@@ -75,8 +77,16 @@ class TestResponseShape:
 
             result = drift.get_drift_report()
 
-        assert set(result) == {"columns", "drifted_columns", "total_columns", "share", "dataset_drift"}
+        assert set(result) == {
+            "columns",
+            "drifted_columns",
+            "total_columns",
+            "share",
+            "dataset_drift",
+            "excluded_columns",
+        }
         assert result["drifted_columns"] == 1
+        assert result["total_columns"] == 3
         assert result["share"] == pytest.approx(1 / 3)
         assert result["dataset_drift"] is False  # share < 0.5
         assert len(result["columns"]) == 3
@@ -87,7 +97,8 @@ class TestResponseShape:
         assert drifted_names == {"monthly_charges"}
 
     def test_dataset_drift_true_when_share_at_or_above_half(self):
-        drift._reference = pd.DataFrame({"tenure": [1, 2, 3]})
+        view_columns = ["tenure", "monthly_charges"]
+        drift._reference = pd.DataFrame({c: [1, 2, 3] for c in view_columns})
         fake_snapshot = MagicMock()
         fake_snapshot.dict.return_value = _fake_snapshot_dict(
             [
@@ -96,7 +107,8 @@ class TestResponseShape:
             ]
         )
 
-        with patch.object(drift, "_load_current", return_value=pd.DataFrame({"tenure": [1]})), \
+        with patch.object(drift, "DRIFT_VIEW_COLUMNS", view_columns), \
+             patch.object(drift, "_load_current", return_value=pd.DataFrame({c: [1] for c in view_columns})), \
              patch.object(drift, "psycopg2") as fake_psycopg2, \
              patch.object(drift, "Report") as fake_report_cls:
             fake_psycopg2.connect.return_value = MagicMock()
@@ -106,3 +118,33 @@ class TestResponseShape:
 
         assert result["share"] == 0.5
         assert result["dataset_drift"] is True  # share >= 0.5
+
+
+class TestExcludedColumns:
+    def test_recent_window_columns_are_excluded_from_the_drift_view(self):
+        assert "recent_30d_vs_older_60d_ratio" not in drift.DRIFT_VIEW_COLUMNS
+        assert "avg_session_duration_recent_30d" not in drift.DRIFT_VIEW_COLUMNS
+        # every other feature column is still in the view
+        assert len(drift.DRIFT_VIEW_COLUMNS) == len(drift.FEATURE_COLUMNS) - 2
+
+    def test_response_documents_the_exclusion(self):
+        view_columns = ["tenure"]
+        drift._reference = pd.DataFrame({"tenure": [1, 2, 3]})
+        fake_snapshot = MagicMock()
+        fake_snapshot.dict.return_value = _fake_snapshot_dict([("tenure", "wasserstein", 0.1, 0.02)])
+
+        with patch.object(drift, "DRIFT_VIEW_COLUMNS", view_columns), \
+             patch.object(drift, "_load_current", return_value=pd.DataFrame({"tenure": [1]})), \
+             patch.object(drift, "psycopg2") as fake_psycopg2, \
+             patch.object(drift, "Report") as fake_report_cls:
+            fake_psycopg2.connect.return_value = MagicMock()
+            fake_report_cls.return_value.run.return_value = fake_snapshot
+
+            result = drift.get_drift_report()
+
+        excluded_names = {e["column"] for e in result["excluded_columns"]}
+        assert excluded_names == {"recent_30d_vs_older_60d_ratio", "avg_session_duration_recent_30d"}
+        for entry in result["excluded_columns"]:
+            assert entry["reason"]  # non-empty, documented reason
+        # the excluded columns never appear in the per-column results
+        assert {c["column"] for c in result["columns"]}.isdisjoint(excluded_names)

@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Stage 1/2 live control panel</title>
+<style>
+  body { font-family: system-ui, sans-serif; margin: 2rem; color: #1a1a1a; background: #fafafa; }
+  h1 { font-size: 1.25rem; }
+  .warning-banner {
+    display: none;
+    background: #b91c1c;
+    color: white;
+    padding: 0.75rem 1rem;
+    border-radius: 6px;
+    margin-bottom: 1rem;
+    font-weight: 600;
+  }
+  .warning-banner.visible { display: block; }
+  .warning-banner ul { margin: 0.25rem 0 0 1.25rem; font-weight: 400; }
+  .grid { display: grid; grid-template-columns: repeat(2, minmax(220px, 1fr)); gap: 1rem; margin-bottom: 1.5rem; }
+  .card { background: white; border: 1px solid #ddd; border-radius: 6px; padding: 0.75rem 1rem; }
+  .card h2 { font-size: 0.8rem; text-transform: uppercase; color: #666; margin: 0 0 0.4rem; }
+  .card pre { margin: 0; font-size: 0.85rem; white-space: pre-wrap; }
+  form { display: flex; gap: 0.5rem; align-items: center; margin-bottom: 0.75rem; flex-wrap: wrap; }
+  input[type=number] { width: 5rem; }
+  button { cursor: pointer; padding: 0.35rem 0.8rem; }
+  .status-dot { display: inline-block; width: 0.6rem; height: 0.6rem; border-radius: 50%; margin-right: 0.4rem; }
+  .status-dot.on { background: #16a34a; }
+  .status-dot.off { background: #999; }
+</style>
+</head>
+<body>
+  <h1>Stage 1/2 live control panel</h1>
+
+  <div id="warning-banner" class="warning-banner">
+    &#9888; Queue backlog growing with no consumer attached:
+    <ul id="warning-list"></ul>
+  </div>
+
+  <form id="start-form">
+    <label>rate <input type="number" id="rate" value="20" step="1" min="0"></label>
+    <label>drift <input type="checkbox" id="drift"></label>
+    <label>drift_fraction <input type="number" id="drift_fraction" value="0.3" step="0.1" min="0" max="1"></label>
+    <button type="submit">Start</button>
+    <button type="button" id="stop-btn">Stop</button>
+    <button type="button" id="reset-btn">Reset pipeline</button>
+    <button type="button" id="rebuild-btn">Rebuild features</button>
+  </form>
+
+  <div class="grid">
+    <div class="card">
+      <h2>Generator</h2>
+      <pre id="generator-card">loading...</pre>
+    </div>
+    <div class="card">
+      <h2>Simulated clock</h2>
+      <pre id="clock-card">loading...</pre>
+    </div>
+    <div class="card">
+      <h2>Rows landed (Postgres)</h2>
+      <pre id="rows-card">loading...</pre>
+    </div>
+    <div class="card">
+      <h2>Queue depth / consumers (RabbitMQ)</h2>
+      <pre id="queue-card">loading...</pre>
+    </div>
+  </div>
+
+  <script>
+    async function refresh() {
+      let status;
+      try {
+        const resp = await fetch("/generator/status");
+        status = await resp.json();
+      } catch (e) {
+        document.getElementById("generator-card").textContent = "control API unreachable";
+        return;
+      }
+
+      const dot = status.running
+        ? '<span class="status-dot on"></span>running'
+        : '<span class="status-dot off"></span>stopped';
+      document.getElementById("generator-card").innerHTML =
+        dot + "\n" +
+        `events_published: ${status.events_published}\n` +
+        `by_queue: ${JSON.stringify(status.events_published_by_queue)}\n` +
+        `drift: ${status.drift}  drift_fraction: ${status.drift_fraction}`;
+
+      document.getElementById("clock-card").textContent =
+        `sim_time: ${status.sim_time}\n` +
+        `speed: ${status.speed_sim_days_per_real_second} sim-days / real-second`;
+
+      document.getElementById("rows-card").textContent =
+        JSON.stringify(status.rows_landed, null, 1);
+
+      const depths = status.queue_depth || {};
+      const consumers = status.queue_consumers || {};
+      const lines = Object.keys(depths).map(
+        (q) => `${q}: depth=${depths[q]}  consumers=${consumers[q]}`
+      );
+      document.getElementById("queue-card").textContent = lines.join("\n");
+
+      const banner = document.getElementById("warning-banner");
+      const list = document.getElementById("warning-list");
+      const warnings = status.warnings || [];
+      if (warnings.length > 0) {
+        list.innerHTML = warnings.map((w) => `<li>${w}</li>`).join("");
+        banner.classList.add("visible");
+      } else {
+        banner.classList.remove("visible");
+      }
+    }
+
+    document.getElementById("start-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      await fetch("/generator/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          rate: parseFloat(document.getElementById("rate").value),
+          drift: document.getElementById("drift").checked,
+          drift_fraction: parseFloat(document.getElementById("drift_fraction").value),
+        }),
+      });
+      refresh();
+    });
+
+    document.getElementById("stop-btn").addEventListener("click", async () => {
+      await fetch("/generator/stop", { method: "POST" });
+      refresh();
+    });
+
+    document.getElementById("reset-btn").addEventListener("click", async () => {
+      await fetch("/pipeline/reset", { method: "POST" });
+      refresh();
+    });
+
+    document.getElementById("rebuild-btn").addEventListener("click", async () => {
+      await fetch("/pipeline/rebuild-features", { method: "POST" });
+      refresh();
+    });
+
+    refresh();
+    setInterval(refresh, 2000);
+  </script>
+</body>
+</html>

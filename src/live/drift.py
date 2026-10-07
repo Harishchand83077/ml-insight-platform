@@ -16,6 +16,30 @@ data against itself. cache_reference() always re-derives it the same way
 train_baseline.py does (load_dataset() + the identical train_test_split
 call, same random_state=42), so it matches what the deployed model was
 actually trained on, as long as reset last ran against the real baseline.
+
+EXCLUDED_COLUMNS: recent_30d_vs_older_60d_ratio and
+avg_session_duration_recent_30d are left out of the drift view entirely -
+see the reasons below, which are the result of a direct measurement, not
+a guess. Both come from build_login_features()'s "recent 30 days" window
+in src/pipelines/build_features.py, which is correct code doing what a
+rolling calendar window should do - the problem is a scale mismatch, not a
+bug: isolated (zero live traffic, same historical data), the reference's
+own feature values (zero_share 0.33%, well-distributed) go to 80.6% zero by
+as_of = END_DATE + 30 simulated days, and to a literal constant 0 (100%
+zero, 1 unique value for all 7043 customers) by +60 days - purely from the
+simulated clock advancing past the fixed 90-day historical window, before
+any live traffic or drift mode is involved. Feeding the live generator
+enough traffic to keep the window populated at the reference's density
+would need roughly 7043 customers x ~5 logins/30d (the historical rate) =
+~35,000 login events per 30 simulated days - at the default clock speed
+(1 sim day/real second) that's ~1,167 events/sec, versus the generator's
+measured achievable throughput of ~30 events/sec (confirmed live; see the
+Stage 2 report). No window-formula change closes a ~40x gap like that
+without either slowing the clock enough to defeat its own purpose, or
+artificially thinning the reference to match the live system's limited
+scale (which would stop it being the real training distribution). That's
+why this is excluded rather than "fixed": the window computation itself
+isn't wrong.
 """
 
 import pandas as pd
@@ -29,6 +53,28 @@ from src.models.monitor_drift import is_drifted
 from src.models.train_baseline import BINARY_YES_NO_COLS, CATEGORICAL_COLS, NUMERIC_COLS, load_dataset
 
 FEATURE_COLUMNS = CATEGORICAL_COLS + BINARY_YES_NO_COLS + NUMERIC_COLS
+
+EXCLUDED_COLUMNS = {
+    "recent_30d_vs_older_60d_ratio": (
+        "Calendar-windowed to as_of, not to the data's own timeline. Measured "
+        "in isolation (zero live traffic): zero_share goes from 0.33% at the "
+        "reference's as_of=END_DATE to 80.6% at +30 simulated days and a "
+        "literal constant 0 (every one of 7043 customers) at +60 days, before "
+        "any live traffic or drift is involved. With live traffic, sustaining "
+        "the reference's density would need ~1,167 login events/sec at the "
+        "default clock speed, ~40x the generator's measured ~30/sec. A scale "
+        "mismatch, not a window-formula bug - see src/live/drift.py's "
+        "module docstring for the full measurement."
+    ),
+    "avg_session_duration_recent_30d": (
+        "Same recent-30-day window in build_login_features() as "
+        "recent_30d_vs_older_60d_ratio, and the same cause - see that "
+        "column's reason."
+    ),
+}
+
+# Columns actually fed to Evidently: FEATURE_COLUMNS minus the excluded ones.
+DRIFT_VIEW_COLUMNS = [c for c in FEATURE_COLUMNS if c not in EXCLUDED_COLUMNS]
 
 _reference = None  # cached X_train DataFrame; set by cache_reference()
 
@@ -76,7 +122,7 @@ def get_drift_report():
         conn.close()
 
     report = Report([DataDriftPreset()])
-    snapshot = report.run(current, _reference)
+    snapshot = report.run(current[DRIFT_VIEW_COLUMNS], _reference[DRIFT_VIEW_COLUMNS])
     result = snapshot.dict()
 
     columns = []
@@ -107,7 +153,10 @@ def get_drift_report():
     return {
         "columns": columns,
         "drifted_columns": drifted_count,
-        "total_columns": len(FEATURE_COLUMNS),
+        "total_columns": len(DRIFT_VIEW_COLUMNS),
         "share": share,
         "dataset_drift": bool(share >= 0.5),
+        "excluded_columns": [
+            {"column": column, "reason": reason} for column, reason in EXCLUDED_COLUMNS.items()
+        ],
     }

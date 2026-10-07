@@ -11,11 +11,12 @@ Run with:
 """
 
 import os
+from pathlib import Path
 
 import psycopg2
 import requests
 from fastapi import FastAPI
-from fastapi.responses import JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel
 
 from src.live import drift as drift_module
@@ -33,6 +34,17 @@ _generator = EventGenerator(clock=_clock)
 @app.exception_handler(drift_module.NoReferenceError)
 def _no_reference_handler(request, exc):
     return JSONResponse(status_code=409, content={"error": str(exc)})
+
+
+PANEL_HTML_PATH = Path(__file__).parent / "panel.html"
+
+
+@app.get("/", response_class=HTMLResponse)
+def control_panel():
+    """The control panel: polls /generator/status and shows a warning
+    banner when detect_queue_warnings() flags a growing, unconsumed
+    queue."""
+    return PANEL_HTML_PATH.read_text(encoding="utf-8")
 
 RABBITMQ_MGMT_PORT = os.environ.get("RABBITMQ_MGMT_PORT", "15672")
 RABBITMQ_MGMT_USER = os.environ.get("RABBITMQ_MGMT_USER", "guest")
@@ -78,8 +90,11 @@ def _row_counts():
         conn.close()
 
 
-def _queue_depths():
-    depths = {}
+def _queue_depths_and_consumers():
+    """{queue_name: {"messages": int|None, "consumers": int|None}} - both
+    come from the same RabbitMQ management API call, so a single request
+    per queue covers depth and consumer count together."""
+    info = {}
     for queue_name in QUEUES:
         try:
             resp = requests.get(
@@ -88,17 +103,59 @@ def _queue_depths():
                 timeout=2,
             )
             resp.raise_for_status()
-            depths[queue_name] = resp.json().get("messages")
+            data = resp.json()
+            info[queue_name] = {"messages": data.get("messages"), "consumers": data.get("consumers")}
         except requests.RequestException as exc:
-            depths[queue_name] = f"unavailable: {exc}"
-    return depths
+            info[queue_name] = {"messages": None, "consumers": None, "error": str(exc)}
+    return info
+
+
+def detect_queue_warnings(queue_info, previous_depths):
+    """queue_info: this call's {queue_name: {"messages", "consumers"}}.
+    previous_depths: {queue_name: int|None} remembered from the previous
+    /generator/status call (or {} on the very first call - nothing to
+    compare against yet, so no warnings then).
+
+    Returns (warnings, updated_previous_depths): a list of human-readable
+    warning strings, and the depths to remember for the next call.
+
+    A queue is flagged only when its depth actually GREW since the last
+    reading while it has 0 consumers - not just "depth is nonzero", which
+    would also flag a queue that's draining normally after a burst, or one
+    with a harmless leftover backlog that isn't getting worse. Growing
+    depth with zero consumers is specifically "nothing is reading this
+    queue and it's piling up" - the event_consumer.py-not-running case this
+    exists to catch."""
+    warnings = []
+    updated = {}
+    for queue_name, info in queue_info.items():
+        messages = info.get("messages")
+        consumers = info.get("consumers")
+        previous = previous_depths.get(queue_name)
+        if messages is not None and consumers == 0 and previous is not None and messages > previous:
+            warnings.append(
+                f"{queue_name}: queue depth growing ({previous} -> {messages}) with 0 "
+                "consumers - is event_consumer.py running?"
+            )
+        updated[queue_name] = messages
+    return warnings, updated
+
+
+_last_queue_depths = {}
 
 
 @app.get("/generator/status")
 def generator_status():
+    global _last_queue_depths
     status = _generator.status()
     status["rows_landed"] = _row_counts()
-    status["queue_depth"] = _queue_depths()
+
+    queue_info = _queue_depths_and_consumers()
+    status["queue_depth"] = {q: info["messages"] for q, info in queue_info.items()}
+    status["queue_consumers"] = {q: info["consumers"] for q, info in queue_info.items()}
+
+    warnings, _last_queue_depths = detect_queue_warnings(queue_info, _last_queue_depths)
+    status["warnings"] = warnings
     return status
 
 
