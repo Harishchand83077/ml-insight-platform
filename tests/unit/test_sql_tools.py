@@ -5,8 +5,18 @@ database connection is made or needed: for a rejected (disallowed)
 column, run_read (src/common/db.py) is patched to raise
 AssertionError, so the test fails loudly if validation ever falls
 through to a real DB call.
+
+Both get_shared_pool and run_read are patched together, not run_read
+alone: tools.py's _run_bounded_read calls get_shared_pool() to build the
+pool argument before it ever calls run_read(pool, query) - and
+get_shared_pool() (via make_pool/psycopg2.pool.SimpleConnectionPool)
+opens a real connection immediately on first use, regardless of what
+run_read does with the result. Patching run_read alone leaves that real
+connection attempt in place; tests/unit/conftest.py's guard exists to
+catch exactly this if it's ever missed again.
 """
 
+from contextlib import contextmanager
 from unittest.mock import patch
 
 import pytest
@@ -16,12 +26,18 @@ from src.agent.tools import ALLOWED_COLUMNS, get_churn_rate_by_column, get_custo
 INJECTION_ATTEMPT = "DROP TABLE customers; --"
 
 
+@contextmanager
 def _never_connect():
-    return patch("src.agent.tools.run_read", side_effect=AssertionError("must not touch the DB"))
+    with patch("src.agent.tools.get_shared_pool", side_effect=AssertionError("must not touch the DB")), \
+         patch("src.agent.tools.run_read", side_effect=AssertionError("must not touch the DB")):
+        yield
 
 
+@contextmanager
 def _connect_reaches_here():
-    return patch("src.agent.tools.run_read", side_effect=RuntimeError("reached DB call"))
+    with patch("src.agent.tools.get_shared_pool", return_value="fake-pool-not-a-real-connection"), \
+         patch("src.agent.tools.run_read", side_effect=RuntimeError("reached DB call")):
+        yield
 
 
 class TestGetChurnRateByColumnAllowlist:

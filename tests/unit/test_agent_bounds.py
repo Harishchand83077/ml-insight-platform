@@ -81,7 +81,8 @@ class TestRecursionLimit:
         assert api.AGENT_RECURSION_LIMIT == 12
 
     def test_forced_tool_loop_returns_the_friendly_message_not_a_500(self, chat_client):
-        with patch("src.agent.tools.run_read", return_value=[(7043,)]) as fake_read:
+        with patch("src.agent.tools.get_shared_pool", return_value="fake-pool-not-a-real-connection"), \
+             patch("src.agent.tools.run_read", return_value=[(7043,)]) as fake_read:
             resp = _post_chat(chat_client, _looping_agent(), "limit-loop")
 
         assert resp.status_code == 200
@@ -108,7 +109,8 @@ class TestRecursionLimit:
         graph.add_conditional_edges("model", lambda s: "tools" if s["messages"][-1].tool_calls else END)
         graph.add_edge("tools", "model")
 
-        with patch("src.agent.tools.run_read", return_value=[(7043,)]):
+        with patch("src.agent.tools.get_shared_pool", return_value="fake-pool-not-a-real-connection"), \
+             patch("src.agent.tools.run_read", return_value=[(7043,)]):
             resp = _post_chat(chat_client, graph.compile(), "two-tools")
 
         assert resp.status_code == 200
@@ -148,14 +150,16 @@ class TestGroqTimeoutAndConnectionErrors:
 
 class TestSqlToolErrorsBecomeToolMessages:
     def test_count_tool_returns_an_error_string_on_db_failure(self):
-        with patch("src.agent.tools.run_read", side_effect=psycopg2.OperationalError("database is down")):
+        with patch("src.agent.tools.get_shared_pool", return_value="fake-pool-not-a-real-connection"), \
+             patch("src.agent.tools.run_read", side_effect=psycopg2.OperationalError("database is down")):
             result = get_customer_count.invoke({"filters": {}})
 
         assert result.startswith("Error counting customers")
         assert "database is down" in result
 
     def test_churn_rate_tool_returns_an_error_string_on_db_failure(self):
-        with patch("src.agent.tools.run_read", side_effect=psycopg2.errors.QueryCanceled("statement timeout")):
+        with patch("src.agent.tools.get_shared_pool", return_value="fake-pool-not-a-real-connection"), \
+             patch("src.agent.tools.run_read", side_effect=psycopg2.errors.QueryCanceled("statement timeout")):
             result = get_churn_rate_by_column.invoke({"column_name": "contract"})
 
         assert result.startswith("Error computing the churn rate by contract")
@@ -186,7 +190,8 @@ class TestSqlToolErrorsBecomeToolMessages:
         def fake_run_read(pool, query):
             return query(_Conn())
 
-        with patch.object(tools, "run_read", side_effect=fake_run_read):
+        with patch.object(tools, "get_shared_pool", return_value="fake-pool-not-a-real-connection"), \
+             patch.object(tools, "run_read", side_effect=fake_run_read):
             tools.get_customer_count.invoke({"filters": {}})
 
         assert executed[0] == "SET LOCAL statement_timeout = '5s'"
