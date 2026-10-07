@@ -2,7 +2,11 @@
 Stage 1 live synthetic event stream: a background thread that picks random
 existing customers from the LOCAL customers table and publishes login,
 support-ticket, and feature-usage events to RabbitMQ in real time,
-timestamped "now".
+timestamped with the Stage 2 simulated clock's current time (src/live/
+simclock.py) - not wall-clock now(). Events used to be wall-clock-stamped;
+see the Stage 2 investigation for why that was a problem (a live event
+stamped "now" lands ~2 years after the historical data, which
+build_features.py's fixed as_of anchor was silently treating as "recent").
 
 The churn-conditioned shape of each event - device mix, session-duration
 scaling by engagement trend, ticket base rate, resolve probability,
@@ -26,7 +30,6 @@ import json
 import threading
 import time
 import uuid
-from datetime import datetime
 
 import numpy as np
 import pika
@@ -48,6 +51,7 @@ from src.data_gen.generate_events import (
     trend_duration_low,
 )
 from src.live.safety import local_pg_dsn, local_rabbitmq_host
+from src.live.simclock import SimClock
 
 QUEUES = ["login_events", "support_tickets", "feature_usage_logs"]
 
@@ -78,22 +82,20 @@ CUSTOMER_SELECT_SQL = """
 """
 
 
-def _now():
-    # naive local timestamp, matching the TIMESTAMP (no time zone) columns
-    # and the convention generate_events.py's pandas Timestamps already use.
-    return datetime.now().isoformat(sep=" ")
-
-
 class EventGenerator:
     """events_per_second: target publish rate. drift: whether a configurable
     fraction of customers has shifted engagement right now. rng: an optional
     seeded numpy Generator, for reproducible tests - defaults to an
-    unseeded one for real use."""
+    unseeded one for real use. clock: the SimClock events are stamped with
+    (defaults to a fresh one starting at END_DATE) - control_api.py shares
+    one clock across the generator and /generator/status."""
 
-    def __init__(self, events_per_second=5.0, drift=False, rng=None):
+    def __init__(self, events_per_second=5.0, drift=False, drift_fraction=DRIFT_FRACTION, rng=None, clock=None):
         self.events_per_second = events_per_second
         self.drift = drift
+        self.drift_fraction = drift_fraction
         self._rng = rng if rng is not None else np.random.default_rng()
+        self.clock = clock if clock is not None else SimClock()
         self._customers = None
         self._drifted_ids = set()
         self._thread = None
@@ -108,10 +110,11 @@ class EventGenerator:
     def is_running(self):
         return self._thread is not None and self._thread.is_alive()
 
-    def start(self, events_per_second=None, drift=None):
+    def start(self, events_per_second=None, drift=None, drift_fraction=None):
         """Idempotent: a no-op (returns False) if already running. Params
         are only applied on the transition from stopped to running - call
-        stop() first to change the rate or drift of a running generator."""
+        stop() first to change the rate, drift, or drift_fraction of a
+        running generator."""
         with self._lifecycle_lock:
             if self.is_running():
                 return False
@@ -119,6 +122,8 @@ class EventGenerator:
                 self.events_per_second = events_per_second
             if drift is not None:
                 self.drift = drift
+            if drift_fraction is not None:
+                self.drift_fraction = drift_fraction
 
             local_pg_dsn()  # raises NonLocalHostError before anything else if misconfigured
             local_rabbitmq_host()
@@ -146,12 +151,29 @@ class EventGenerator:
 
     def status(self):
         with self._stats_lock:
-            return {
+            status = {
                 "running": self.is_running(),
                 "events_published": self.published,
                 "events_published_by_queue": dict(self.published_by_queue),
                 "drift": self.drift,
+                "drift_fraction": self.drift_fraction,
             }
+        status.update(self.clock.status())
+        return status
+
+    def reset_state(self):
+        """Clears published counters, the drifted-customer set, and the
+        cached customer pool, so the next start() reloads customers fresh
+        and begins counting from zero. Does not touch the clock - callers
+        (POST /pipeline/reset) reset that separately, since it has its own
+        start point. Must be called while stopped."""
+        if self.is_running():
+            raise RuntimeError("reset_state() requires the generator to be stopped first")
+        with self._stats_lock:
+            self.published = 0
+            self.published_by_queue = {q: 0 for q in QUEUES}
+        self._customers = None
+        self._drifted_ids = set()
 
     # --- customer pool --------------------------------------------------
 
@@ -172,7 +194,7 @@ class EventGenerator:
     def _pick_drifted_customers(self, customers):
         if not self.drift:
             return set()
-        n = max(1, int(len(customers) * DRIFT_FRACTION))
+        n = max(1, int(len(customers) * self.drift_fraction))
         chosen = self._rng.choice(len(customers), size=n, replace=False)
         return {customers[i]["customerID"] for i in chosen}
 
@@ -206,7 +228,7 @@ class EventGenerator:
         return "login_events", {
             "event_id": str(uuid.uuid4()),
             "customer_id": customer["customerID"],
-            "timestamp": _now(),
+            "timestamp": self.clock.now().isoformat(sep=" "),
             "session_duration_seconds": duration,
             "device": str(self._rng.choice(DEVICES, p=DEVICE_PROBS)),
         }
@@ -225,7 +247,7 @@ class EventGenerator:
         return "support_tickets", {
             "event_id": str(uuid.uuid4()),
             "customer_id": customer["customerID"],
-            "timestamp": _now(),
+            "timestamp": self.clock.now().isoformat(sep=" "),
             "category": str(self._rng.choice(TICKET_CATEGORIES)),
             "resolved": resolved,
             "resolution_time_hours": resolution_time,
@@ -245,7 +267,7 @@ class EventGenerator:
         return "feature_usage_logs", {
             "event_id": str(uuid.uuid4()),
             "customer_id": customer["customerID"],
-            "timestamp": _now(),
+            "timestamp": self.clock.now().isoformat(sep=" "),
             "feature_name": service,
             "usage_count": usage_count,
         }

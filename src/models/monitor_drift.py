@@ -22,7 +22,7 @@ from evidently import Report
 from evidently.presets import DataDriftPreset
 from sklearn.model_selection import train_test_split
 
-from train_baseline import BINARY_YES_NO_COLS, CATEGORICAL_COLS, NUMERIC_COLS, PG_DSN, load_dataset
+from src.models.train_baseline import BINARY_YES_NO_COLS, CATEGORICAL_COLS, NUMERIC_COLS, PG_DSN, load_dataset
 
 REPORT_PATH = "reports/drift_report.html"
 CURRENT_SAMPLE_FRAC = 0.2

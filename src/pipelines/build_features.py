@@ -116,13 +116,17 @@ def build_customer_features(customers):
     return customers[keep]
 
 
-def build_login_features(login_events):
+def build_login_features(login_events, as_of=END_DATE):
+    """as_of anchors the 'recent 30d' / 'older 60d' windows (default: END_DATE,
+    today's behaviour, unchanged for every existing caller). Stage 2's
+    simulated clock passes sim-now here so the windows track simulated time
+    instead of the fixed historical reference date."""
     if login_events.empty:
         return pd.DataFrame(
             columns=["customer_id", "total_logins_90d", "recent_30d_vs_older_60d_ratio", "avg_session_duration_recent_30d"]
         )
 
-    days_ago = (END_DATE - login_events["timestamp"]).dt.days
+    days_ago = (as_of - login_events["timestamp"]).dt.days
     recent = login_events[days_ago < 30]
     older = login_events[(days_ago >= 30) & (days_ago < 90)]
 
@@ -172,11 +176,13 @@ def build_usage_features(feature_usage_logs):
     )
 
 
-def build_feature_table(customers, login_events, support_tickets, feature_usage_logs):
+def build_feature_table(customers, login_events, support_tickets, feature_usage_logs, as_of=END_DATE):
     """Pure composition step (no I/O): joins the per-source feature builders
-    and zero-fills customers with no rows in a given event table."""
+    and zero-fills customers with no rows in a given event table. as_of is
+    forwarded to build_login_features only - ticket/usage features aren't
+    windowed by recency at all (see build_ticket_features/build_usage_features)."""
     features = build_customer_features(customers)
-    features = features.merge(build_login_features(login_events), on="customer_id", how="left")
+    features = features.merge(build_login_features(login_events, as_of=as_of), on="customer_id", how="left")
     features = features.merge(build_ticket_features(support_tickets), on="customer_id", how="left")
     features = features.merge(build_usage_features(feature_usage_logs), on="customer_id", how="left")
 
@@ -215,20 +221,30 @@ def write_features_atomically(conn, features):
     conn.commit()
 
 
-def main():
-    conn = psycopg2.connect(**PG_DSN)
-
+def run_build(conn, as_of=END_DATE):
+    """Reads customers + the three event tables, builds the feature table
+    (windowed at as_of), writes it to FEATURES_CSV, and atomically replaces
+    customer_features. Returns the built DataFrame. Shared by main() (the
+    CLI entry point - as_of=END_DATE, today's behaviour, unchanged) and
+    Stage 2's POST /pipeline/rebuild-features (as_of=simulated now), so
+    there's one build+write code path regardless of caller."""
     customers = pd.read_sql("SELECT * FROM customers", conn)
     login_events = pd.read_sql("SELECT * FROM login_events", conn, parse_dates=["timestamp"])
     support_tickets = pd.read_sql("SELECT * FROM support_tickets", conn, parse_dates=["timestamp"])
     feature_usage_logs = pd.read_sql("SELECT * FROM feature_usage_logs", conn, parse_dates=["timestamp"])
 
-    features = build_feature_table(customers, login_events, support_tickets, feature_usage_logs)
+    features = build_feature_table(customers, login_events, support_tickets, feature_usage_logs, as_of=as_of)
 
     os.makedirs(os.path.dirname(FEATURES_CSV), exist_ok=True)
     features.to_csv(FEATURES_CSV, index=False)
 
     write_features_atomically(conn, features)
+    return features
+
+
+def main():
+    conn = psycopg2.connect(**PG_DSN)
+    features = run_build(conn)
     conn.close()
 
     print(f"Final shape: {features.shape}")
