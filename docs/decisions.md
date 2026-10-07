@@ -763,3 +763,89 @@
   suite and lint pass, and the Dockerfile copies no untracked path.
 - .gitignore had UTF-16 corruption in three places (found by checking 
   the file byte by byte after the first instance).
+
+  ## Semantic cache correctness (Week 9)
+
+- Hypothesis: identical questions about different customers collide. 
+  Measured: they don't (0.83-0.84 vs 0.90 threshold). The real collision 
+  was a what-if pair differing only in contract term (0.975): bge-small 
+  barely moves on category words, so a similarity threshold can't 
+  separate them from legitimate rewordings (0.91).
+- Fix: skip the cache for ID-bearing questions; 24h TTL so entries 
+  expire after data or KB changes. 55 unit tests.
+- Open: ID-less data-dependent questions (e.g. churn rate by contract) 
+  may still collide. Measuring next.
+- Found during live testing: pooled connections go stale when Supabase 
+  closes idle ones (intermittent 500 in auth). Fixing with keepalives, 
+  discard-on-error, and retry for reads only.
+
+  ## Pool resilience and cache scope (Week 9)
+
+- Supabase closes idle connections; the shared pool handed them back out 
+  (intermittent 500). Fix: TCP keepalives, discard connections on 
+  error, retry once for idempotent reads only, ping-before-write for 
+  writes (a blind retry could double-apply a write whose ack was lost). 
+  Verified live by terminating the backend pid mid-session.
+- Measured ID-less collisions: worst 0.907 vs lowest legitimate hit 
+  0.910, so no threshold separates them. Changed what's cached instead: 
+  only answers that used no data tools. Trade-off: fewer cache hits, 
+  no wrong cached numbers.
+- CI run #29 failed on GitHub infrastructure (runner never acquired, 
+  server error), not on code; re-ran.
+
+  ## Atomic feature-table rebuild (Week 9)
+
+- Hypothesis: /predict could read an empty or partial customer_features 
+  during a rebuild. Measured with a 100ms reader loop: no (0 zero-row 
+  reads) because Postgres TRUNCATE is transactional.
+- Real cost: TRUNCATE's exclusive lock blocked readers for the whole 
+  insert (3 reads over 250ms, max 648ms locally).
+- Fix: build customer_features_new, swap by rename in one transaction. 
+  0 blocked reads, max 11ms; a forced mid-insert failure left the old 
+  table untouched (same checksum, no staging table left behind).
+- Not changed: feature cache TTL, so features can be up to 300s stale 
+  after a rebuild.
+
+  ## Production-readiness audit (Week 9)
+
+- Read-only audit of the deployed path, with file:line evidence. Must-have 
+  gaps: no Redis timeouts or fallback (a Redis outage would 500 every 
+  /predict), no effective agent iteration limit (default 10007), Groq 
+  timeouts and SQL tool errors surfacing as 500s, unpooled SQL tool 
+  connections, no wait on pool exhaustion, untested failure paths.
+- Noted a contradiction in the audit itself: /health shares the 
+  40-thread pool, so a hung Redis could stall it and fail Render's health 
+  check.
+- Deliberately not built: negative caching, stampede coalescing, 
+  partitioning, circuit breaker, Redlock. Can explain when each matters.
+
+  ## Connection budget and failure handling (Week 9)
+
+- Supabase pooler limits: pool size 15, 200 max clients, session mode 
+  (port 5432). Our pools could hold up to 50 connections, plus local runs 
+  sharing the same 15. Consolidating to one pool and testing transaction 
+  mode (evidence before choosing).
+- Deployed code had no Postgres connect timeout; a stalled connect 
+  blocks a request for minutes. Fixed with connect_timeout=5.
+- Empty final model turn on a two-tool question (5 of 6 runs, not caused 
+  by the recursion-limit change; finish_reason stop, 101 tokens). Added 
+  retry-once plus fallback, a log of response metadata, and a counter.
+
+## Connection budget, resolved (Week 9)
+
+- Measured Supabase poolers with 30 concurrent connections: session mode 
+  (5432) rejected 15 of 30 at exactly pool_size 15 (EMAXCONNSESSION), 
+  instantly, no queueing. Transaction mode (6543) accepted 28-29, with 1-2 
+  transient SSL drops under the simultaneous-connect burst.
+- Grepped for what transaction mode breaks (session SET, prepared 
+  statements, advisory locks, LISTEN/NOTIFY): nothing found; the only SET 
+  is SET LOCAL inside a transaction.
+- Consolidated four pools (up to 50 connections) into one bounded pool of 
+  10. A checkout waits up to 2s, then raises DBBusyError (HTTP 503).
+- Local Locust before/after: no failures either way, p95 90→83ms, p99 
+  300→150ms. Did not exercise exhaustion; unit tests do.
+- Retracted a hypothesis: I suspected pool exhaustion caused the 
+  Supabase stalls seen in testing. Exhaustion fails instantly; the 
+  stalls were connect hangs, now bounded by connect_timeout=5.
+- Empty model answers: 5/6 earlier, 0/30 later; cause unknown. Added 
+  retry, fallback and a counter instead of a guess.
