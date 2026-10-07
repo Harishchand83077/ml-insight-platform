@@ -56,6 +56,7 @@ import re
 import time
 
 import numpy as np
+import redis
 from prometheus_client import Counter
 
 # Absolute import when loaded as part of the src package; src.common isn't
@@ -117,7 +118,14 @@ async def check_semantic_cache(question):
     if contains_customer_id(question):
         return None
 
-    raw_entries = _get_redis_client().lrange(CACHE_KEY, 0, -1)
+    # Redis is best-effort: an error or timeout counts as a miss, so /chat
+    # still reaches the agent when Redis is down.
+    try:
+        raw_entries = _get_redis_client().lrange(CACHE_KEY, 0, -1)
+    except (redis.RedisError, TimeoutError) as e:
+        logger.warning("Semantic cache read failed, treating as a miss: %s", e)
+        SEMANTIC_CACHE_MISS_COUNTER.inc()
+        return None
     entries = [json.loads(raw) for raw in raw_entries]
     now = time.time()
     entries = [entry for entry in entries if _is_fresh(entry, now)]
@@ -176,5 +184,8 @@ async def store_in_semantic_cache(question, response, tool_calls):
             "created_at": time.time(),
         }
     )
-    r.lpush(CACHE_KEY, entry)
-    r.ltrim(CACHE_KEY, 0, MAX_ENTRIES - 1)  # keep newest MAX_ENTRIES, evict the rest
+    try:
+        r.lpush(CACHE_KEY, entry)
+        r.ltrim(CACHE_KEY, 0, MAX_ENTRIES - 1)  # keep newest MAX_ENTRIES, evict the rest
+    except (redis.RedisError, TimeoutError) as e:
+        logger.warning("Semantic cache write failed, skipping the store: %s", e)

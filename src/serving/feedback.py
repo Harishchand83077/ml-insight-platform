@@ -2,31 +2,23 @@
 Stores /chat response feedback (thumbs up/down on an assistant message -
 see api.py's POST /feedback and frontend/src/components/Message.jsx).
 
-Its own small connection pool, same pattern as feature_cache.py/auth.py
-but sized down (1-5, not 1-20): feedback writes are a low-frequency,
-low-concurrency path compared to those, so there's no reason to reserve
-as many connections against Supabase's pooler for this.
+Shares the one pool in src.common.db with feature_cache, auth, and the
+agent's SQL tools - see that module for the sizing and the Supabase pooler
+evidence behind it.
 """
 
 try:
-    from src.common.db import checkout_for_write, make_pool
+    from src.common.db import checkout_for_write, get_shared_pool
 except ImportError:
     import sys
     from pathlib import Path
 
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
-    from src.common.db import checkout_for_write, make_pool
-
-POOL_MIN_CONN = 1
-POOL_MAX_CONN = 5
-_pg_pool = None
+    from src.common.db import checkout_for_write, get_shared_pool
 
 
 def _get_pool():
-    global _pg_pool
-    if _pg_pool is None:
-        _pg_pool = make_pool(POOL_MIN_CONN, POOL_MAX_CONN)
-    return _pg_pool
+    return get_shared_pool()
 
 MESSAGE_CONTENT_MAX_LEN = 1000
 

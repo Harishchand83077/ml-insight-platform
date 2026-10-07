@@ -57,13 +57,16 @@ import torch
 from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from langchain_core.messages import AIMessage
 from langchain_huggingface import HuggingFaceEmbeddings
-from prometheus_client import Histogram
+from langgraph.errors import GraphRecursionError
+from prometheus_client import Counter, Histogram
 from prometheus_fastapi_instrumentator import Instrumentator
 from pydantic import BaseModel, constr
 
 from src.agent.agent import get_agent
 from src.agent.semantic_cache import check_semantic_cache, store_in_semantic_cache
+from src.common.db import DBBusyError
 from src.common.embedding_model import EMBEDDING_MODEL_NAME, set_embedder
 from src.common.production_model import set_pipeline
 from src.serving.auth import (
@@ -175,6 +178,17 @@ app.add_middleware(
 
 Instrumentator().instrument(app).expose(app)  # GET /metrics
 
+
+@app.exception_handler(DBBusyError)
+async def _db_busy_handler(request, exc):
+    # Every DB-touching endpoint (predict, chat's tools, signup, login,
+    # feedback) goes through src.common.db's shared pool, so one handler
+    # here covers all of them: a checkout that waited CHECKOUT_TIMEOUT_SECONDS
+    # with nothing freed up is a 503, not a 500 - the database is reachable,
+    # the process is just at its own concurrency limit.
+    logger.warning("Database pool busy on %s: %s", request.url.path, exc)
+    return JSONResponse(status_code=503, content={"error": "busy, retry shortly"})
+
 AGENT_RESPONSE_TIME = Histogram(
     "agent_response_seconds",
     "Time spent in churn_agent.invoke() - the LLM + tool-call round trip for a real "
@@ -189,6 +203,76 @@ AGENT_RESPONSE_TIME = Histogram(
 # than RateLimitError; catching APIStatusError and checking status_code
 # catches both.
 GROQ_RATE_LIMIT_STATUS_CODES = {429, 413}
+
+# Upper bound on LangGraph steps for one /chat turn. A normal question with two
+# tool calls takes about five steps (model, tools, model, tools, model), so 12
+# leaves room for one retry-like extra call. Past that, the agent is looping.
+AGENT_RECURSION_LIMIT = 12
+
+# gpt-oss sometimes spends its whole output budget on its hidden "reasoning"
+# field (visible in the raw Groq response, dropped by langchain-groq) and
+# returns nothing in `content`. See docs/decisions.md for the diagnosis.
+EMPTY_ANSWER_FALLBACK = "I couldn't produce an answer for that. Please rephrase or try a narrower question."
+
+AGENT_EMPTY_ANSWER_COUNTER = Counter(
+    "agent_empty_answers_total",
+    "Final agent turns whose content came back empty, by how the empty turn was resolved",
+    ["outcome"],  # "retried_ok" or "fallback"
+)
+
+
+def _is_empty_final_message(message):
+    """True for an AIMessage that ended the turn with no text and no pending
+    tool call."""
+    if message is None:
+        return False
+    return not (getattr(message, "tool_calls", None) or []) and not (message.content or "").strip()
+
+
+def _log_empty_final_message(message, session_id):
+    metadata = message.response_metadata or {}
+    logger.warning(
+        "Agent final turn was empty (session=%s): finish_reason=%s, token_usage=%s, additional_kwargs_keys=%s",
+        session_id,
+        metadata.get("finish_reason"),
+        metadata.get("token_usage"),
+        sorted((message.additional_kwargs or {}).keys()),
+    )
+
+
+async def _resolve_empty_final_answer(churn_agent, messages, session_id):
+    """`messages` (a full agent turn) ends in an empty AIMessage. Retries once
+    by re-invoking the agent with that empty message dropped, so the model
+    sees the same history - including any tool results already in it - and
+    is asked again. The graph starts at its model node regardless of input,
+    so this re-runs only the model, not the tools that already ran, unless
+    the model itself decides to call one again.
+
+    Returns (response_text, final_messages, outcome). final_messages never
+    contains an empty turn; outcome is "retried_ok" or "fallback"."""
+    _log_empty_final_message(messages[-1], session_id)
+    history_without_empty_turn = messages[:-1]
+
+    try:
+        retry_result = await asyncio.to_thread(
+            churn_agent.invoke,
+            {"messages": history_without_empty_turn},
+            config={"recursion_limit": AGENT_RECURSION_LIMIT},
+        )
+        retry_messages = retry_result["messages"]
+        retry_final = retry_messages[-1] if retry_messages else None
+        retry_text = (retry_final.content or "").strip() if retry_final else ""
+    except Exception:
+        logger.warning("Retry after an empty final answer itself failed (session=%s)", session_id, exc_info=True)
+        retry_messages, retry_text = None, ""
+
+    if retry_text:
+        AGENT_EMPTY_ANSWER_COUNTER.labels(outcome="retried_ok").inc()
+        return retry_text, retry_messages, "retried_ok"
+
+    AGENT_EMPTY_ANSWER_COUNTER.labels(outcome="fallback").inc()
+    fallback_messages = history_without_empty_turn + [AIMessage(content=EMPTY_ANSWER_FALLBACK)]
+    return EMPTY_ANSWER_FALLBACK, fallback_messages, "fallback"
 
 # (user_id, session_id) -> full LangChain message list for that
 # conversation - keyed by user as well as session_id so one authenticated
@@ -348,7 +432,27 @@ async def chat(
     try:
         with AGENT_RESPONSE_TIME.time():
             churn_agent = await asyncio.to_thread(get_agent)
-            result = await asyncio.to_thread(churn_agent.invoke, {"messages": input_messages})
+            result = await asyncio.to_thread(
+                churn_agent.invoke,
+                {"messages": input_messages},
+                config={"recursion_limit": AGENT_RECURSION_LIMIT},
+            )
+    except GraphRecursionError:
+        # The agent kept calling tools past the step limit. Return a normal
+        # chat response with a clear message. The session history isn't
+        # updated, so the failed turn doesn't leak into later turns.
+        logger.warning("Agent hit the recursion limit (%s steps) for session %s", AGENT_RECURSION_LIMIT, req.session_id)
+        return {
+            "session_id": req.session_id,
+            "response": "I couldn't finish that request. Try a more specific question.",
+            "tool_calls": [],
+        }
+    except (groq.APITimeoutError, groq.APIConnectionError):
+        logger.warning("Groq timed out or was unreachable for session %s", req.session_id, exc_info=True)
+        return JSONResponse(
+            status_code=503,
+            content={"error": "The language model service timed out or is unreachable. Please retry in a few seconds."},
+        )
     except groq.APIStatusError as e:
         if e.status_code in GROQ_RATE_LIMIT_STATUS_CODES:
             logger.warning("Groq rate-limited this request (status %s): %s", e.status_code, e.message)
@@ -358,11 +462,24 @@ async def chat(
             )
         raise
 
-    chat_sessions[session_key] = result["messages"]
-
     # only the messages generated by this turn (not prior turns already
     # reported to the caller before), so tool_calls reflects just this call
     new_messages = result["messages"][len(input_messages):]
+    final_message = new_messages[-1] if new_messages else None
+    empty_answer_outcome = None
+
+    if _is_empty_final_message(final_message):
+        response_text, final_messages, empty_answer_outcome = await _resolve_empty_final_answer(
+            churn_agent, result["messages"], req.session_id
+        )
+        result = {**result, "messages": final_messages}
+        new_messages = final_messages[len(input_messages):]
+    else:
+        response_text = (final_message.content if final_message else "") or ""
+
+    # An empty turn is never stored: the branch above always replaces it with
+    # either a real retried answer or the fallback message before this runs.
+    chat_sessions[session_key] = result["messages"]
 
     tool_calls = [
         {"tool": call["name"], "args": call["args"]}
@@ -370,9 +487,7 @@ async def chat(
         for call in (getattr(msg, "tool_calls", None) or [])
     ]
 
-    response_text = new_messages[-1].content if new_messages else ""
-
-    if use_semantic_cache:
+    if use_semantic_cache and empty_answer_outcome != "fallback":
         await store_in_semantic_cache(req.message, response_text, tool_calls)
 
     return {

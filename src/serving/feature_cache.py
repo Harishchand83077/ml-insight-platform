@@ -9,6 +9,7 @@ import json
 import logging
 
 import psycopg2.extras
+import redis
 from prometheus_client import Counter
 
 # Absolute import when loaded as part of the src package (e.g. by
@@ -18,40 +19,29 @@ from prometheus_client import Counter
 # `python src/serving/test_cache.py`, which does `from feature_cache
 # import ...` and never puts the project root on sys.path itself).
 try:
-    from src.common.db import make_pool, run_read
+    from src.common.db import get_shared_pool, run_read
     from src.common.redis_client import get_redis_client
 except ImportError:
     import sys
     from pathlib import Path
 
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
-    from src.common.db import make_pool, run_read
+    from src.common.db import get_shared_pool, run_read
     from src.common.redis_client import get_redis_client
 
 CACHE_TTL_SECONDS = 300
 CACHE_KEY_PREFIX = "features"
-POOL_MIN_CONN = 1
-# Bumped from 5 -> 20 after load testing showed /predict's p95/p99 latency
-# degrading badly under concurrent load (requests queuing for a pooled
-# connection). A local Postgres instance handles 20 connections easily, so
-# this is a cheap fix - but it's not unlimited scaling: it just raises the
-# concurrency level where the same queuing problem reappears, rather than
-# removing it. A sustained load higher than this would need the same
-# investigation again (or a properly sized pool per expected traffic,
-# read replicas, etc.).
-POOL_MAX_CONN = 20
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("feature_cache")
 
-_pg_pool = None
-
 
 def _get_pool():
-    global _pg_pool
-    if _pg_pool is None:
-        _pg_pool = make_pool(POOL_MIN_CONN, POOL_MAX_CONN)
-    return _pg_pool
+    # This used to be its own pool, sized up from 5 to 20 under load testing.
+    # It's now the one pool shared with auth, feedback, and the agent's SQL
+    # tools - see src/common/db.py for why (Supabase pooler limits, the
+    # bounded-wait semaphore) and the current sizing.
+    return get_shared_pool()
 
 
 FEATURE_CACHE_COUNTER = Counter(
@@ -66,7 +56,17 @@ def get_customer_features(customer_id):
     r = get_redis_client()
     cache_key = f"{CACHE_KEY_PREFIX}:{customer_id}"
 
-    cached = r.get(cache_key)
+    # Redis is best-effort: an error or timeout here is treated as a miss, so
+    # a Redis outage slows /predict down to a Postgres lookup instead of
+    # failing it.
+    try:
+        cached = r.get(cache_key)
+        redis_get_failed = False
+    except (redis.RedisError, TimeoutError) as e:
+        logger.warning("Redis GET failed for %s, falling back to Postgres: %s", customer_id, e)
+        cached = None
+        redis_get_failed = True
+
     if cached is not None:
         logger.info("Cache HIT for %s", customer_id)
         FEATURE_CACHE_COUNTER.labels(result="hit").inc()
@@ -74,6 +74,7 @@ def get_customer_features(customer_id):
 
     logger.info("Cache MISS for %s", customer_id)
     FEATURE_CACHE_COUNTER.labels(result="miss").inc()
+
     def _query(conn):
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute("SELECT * FROM customer_features WHERE customer_id = %s", (customer_id,))
@@ -90,5 +91,12 @@ def get_customer_features(customer_id):
         if hasattr(value, "__float__") and not isinstance(value, (int, float, bool)):
             row[key] = float(value)  # e.g. Decimal from NUMERIC columns
 
-    r.setex(cache_key, CACHE_TTL_SECONDS, json.dumps(row))
+    # If the GET just failed, Redis is unreachable right now. Skip the SETEX so
+    # this request doesn't spend a second timeout on a write that will fail too.
+    if redis_get_failed:
+        return row, False
+    try:
+        r.setex(cache_key, CACHE_TTL_SECONDS, json.dumps(row))
+    except (redis.RedisError, TimeoutError) as e:
+        logger.warning("Redis SETEX failed for %s, returning the row uncached: %s", customer_id, e)
     return row, False

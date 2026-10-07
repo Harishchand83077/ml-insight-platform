@@ -36,8 +36,21 @@ REDIS_URL = os.environ.get("REDIS_URL", "redis://localhost:6379")
 _redis_client = None
 
 
+# Redis is a cache, not a source of truth: callers treat any Redis error or
+# timeout as a miss (see feature_cache.py and semantic_cache.py), so a slow or
+# unreachable Redis costs at most these timeouts per call, never a 500.
+# Upstash round trips measured ~30 ms, so 0.5 s / 1.0 s leave a wide margin.
+REDIS_CONNECT_TIMEOUT_SECONDS = 0.5
+REDIS_SOCKET_TIMEOUT_SECONDS = 1.0
+
+
 def get_redis_client():
     global _redis_client
     if _redis_client is None:
-        _redis_client = redis.Redis.from_url(REDIS_URL, decode_responses=True)
+        _redis_client = redis.Redis.from_url(
+            REDIS_URL,
+            decode_responses=True,
+            socket_connect_timeout=REDIS_CONNECT_TIMEOUT_SECONDS,
+            socket_timeout=REDIS_SOCKET_TIMEOUT_SECONDS,
+        )
     return _redis_client

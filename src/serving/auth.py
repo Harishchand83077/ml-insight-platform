@@ -42,13 +42,13 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from passlib.context import CryptContext
 
 try:
-    from src.common.db import checkout_for_write, make_pool, run_read
+    from src.common.db import checkout_for_write, get_shared_pool, run_read
 except ImportError:
     import sys
     from pathlib import Path
 
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
-    from src.common.db import checkout_for_write, make_pool, run_read
+    from src.common.db import checkout_for_write, get_shared_pool, run_read
 
 load_dotenv()
 
@@ -69,16 +69,10 @@ def _get_jwt_secret() -> str:
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
-POOL_MIN_CONN = 1
-POOL_MAX_CONN = 20
-_pg_pool = None
-
-
 def _get_pool():
-    global _pg_pool
-    if _pg_pool is None:
-        _pg_pool = make_pool(POOL_MIN_CONN, POOL_MAX_CONN)
-    return _pg_pool
+    # Shared with feature_cache, feedback, and the agent's SQL tools - see
+    # src/common/db.py for the sizing and the Supabase pooler evidence.
+    return get_shared_pool()
 
 # HTTPBearer's default auto_error=True raises 403 (not 401) when the
 # Authorization header is missing entirely - auto_error=False here, with

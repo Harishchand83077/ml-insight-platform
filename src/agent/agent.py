@@ -133,7 +133,10 @@ def get_agent():
         api_key = os.environ.get("GROQ_API_KEY")
         if not api_key:
             raise RuntimeError("GROQ_API_KEY is not set. Add it to your .env before using the chat agent.")
-        model = ChatGroq(model="openai/gpt-oss-120b", api_key=api_key)
+        # Bounded so one slow LLM call can't hold a request for minutes. The
+        # SDK default is 60 s read timeout with 2 retries; 30 s with 1 retry
+        # keeps a worst-case turn well under a minute before /chat returns 503.
+        model = ChatGroq(model="openai/gpt-oss-120b", api_key=api_key, timeout=30, max_retries=1)
         _agent = create_agent(
             model,
             tools=[predict_churn_tool, explain_churn_tool, simulate_churn_tool, recommend_retention_tool, get_churn_rate_by_column, get_customer_count, query_project_docs_tool],

@@ -20,6 +20,7 @@ calling code changes.
 
 import logging
 import os
+import threading
 from contextlib import contextmanager
 from urllib.parse import quote
 
@@ -63,7 +64,7 @@ def get_database_url():
 
 def connect_local():
     """A single ready psycopg2 connection to get_database_url()'s target."""
-    return psycopg2.connect(get_database_url())
+    return psycopg2.connect(get_database_url(), **CONNECT_OPTIONS)
 
 
 def connect_supabase():
@@ -79,7 +80,7 @@ def connect_supabase():
             "SUPABASE_DB_URL is not set. Add it to your .env, e.g.:\n"
             "SUPABASE_DB_URL=postgresql://postgres:<password>@db.<project-ref>.supabase.co:5432/postgres"
         )
-    return psycopg2.connect(url)
+    return psycopg2.connect(url, **CONNECT_OPTIONS)
 
 
 # --- Pooled connections -------------------------------------------------
@@ -112,6 +113,12 @@ KEEPALIVE_OPTIONS = {
     "keepalives_count": 3,
 }
 
+# Without this, a stalled network path blocks the request for as long as the OS
+# TCP timeout (minutes). Observed in practice: a Supabase connect hung inside
+# auth.log_audit until the probe was killed. 5 s is far above a normal connect
+# (~0.5 s to Supabase here).
+CONNECT_OPTIONS = {"connect_timeout": 5}
+
 # Errors meaning the connection itself is gone, as opposed to the statement
 # failing (IntegrityError, etc.), which leaves the connection usable.
 CONNECTION_LOST_ERRORS = (psycopg2.OperationalError, psycopg2.InterfaceError)
@@ -119,7 +126,9 @@ CONNECTION_LOST_ERRORS = (psycopg2.OperationalError, psycopg2.InterfaceError)
 
 def make_pool(minconn, maxconn):
     """A SimpleConnectionPool whose connections use TCP keepalives."""
-    return psycopg2.pool.SimpleConnectionPool(minconn, maxconn, get_database_url(), **KEEPALIVE_OPTIONS)
+    return psycopg2.pool.SimpleConnectionPool(
+        minconn, maxconn, get_database_url(), **KEEPALIVE_OPTIONS, **CONNECT_OPTIONS
+    )
 
 
 def _return_connection(pool, conn, lost):
@@ -183,3 +192,78 @@ def checkout_for_write(pool):
         _return_connection(pool, conn, lost=False)
         raise
     _return_connection(pool, conn, lost=False)
+
+
+# --- One shared, bounded pool for the whole process ------------------------
+#
+# feature_cache, auth, feedback, and the agent's SQL tools all go through
+# this one pool now, instead of four separate pools (20 + 20 + 5 + 5 = 50
+# connections possible at once, with no coordination between them).
+#
+# Sizing: SUPABASE_DB_URL is the session pooler (port 5432), whose own limit
+# is a hard pool_size of 15 connections, enforced by an immediate rejection
+# ("max clients reached in session mode"), not a queue - confirmed directly:
+# 30 concurrent connections against it gave exactly 15 ok and 15 instant
+# errors. The transaction pooler (same host, port 6543) took 28-29 of 30
+# concurrently, with only 1-2 transient "SSL connection has been closed
+# unexpectedly" errors, because PgBouncer multiplexes many client
+# connections onto a small number of real Postgres backends - and this
+# codebase has nothing that needs session-level Postgres state across
+# statements (no non-LOCAL SET, no prepared statements, no advisory locks,
+# no LISTEN/NOTIFY, no temp tables, no multi-commit use of one checkout -
+# verified by grep across src/ when this pool was sized), so there is nothing transaction
+# mode would break. Recommendation: point SUPABASE_DB_URL at port 6543.
+#
+# SHARED_POOL_MAX_CONN is deliberately well under even the session pooler's
+# 15, so this process leaves headroom for a concurrent local run against the
+# same database, regardless of which port production ends up using.
+SHARED_POOL_MIN_CONN = 1
+SHARED_POOL_MAX_CONN = 10
+
+# How long a checkout waits for a connection to free up before giving up.
+CHECKOUT_TIMEOUT_SECONDS = 2.0
+
+_shared_pool = None
+
+
+class DBBusyError(Exception):
+    """No pooled connection became free within CHECKOUT_TIMEOUT_SECONDS. The
+    API layer maps this to a 503, not a 500: the database is reachable, the
+    process is just at its own concurrency limit."""
+
+
+class _BoundedPool:
+    """Wraps a psycopg2 pool with a semaphore sized to its max connections.
+    getconn() waits up to CHECKOUT_TIMEOUT_SECONDS for a slot and raises
+    DBBusyError if none frees up, instead of either blocking forever or
+    raising psycopg2.pool.PoolError instantly the way the raw pool does.
+    run_read() and checkout_for_write() are unchanged by this: they still
+    just call getconn()/putconn() and don't know this wrapper exists."""
+
+    def __init__(self, pool, max_conn, checkout_timeout=CHECKOUT_TIMEOUT_SECONDS):
+        self._pool = pool
+        self._semaphore = threading.Semaphore(max_conn)
+        self._timeout = checkout_timeout
+
+    def getconn(self):
+        if not self._semaphore.acquire(timeout=self._timeout):
+            raise DBBusyError(f"No pooled connection became free within {self._timeout}s")
+        try:
+            return self._pool.getconn()
+        except Exception:
+            self._semaphore.release()
+            raise
+
+    def putconn(self, conn, close=False):
+        try:
+            self._pool.putconn(conn, close=close)
+        finally:
+            self._semaphore.release()
+
+
+def get_shared_pool():
+    global _shared_pool
+    if _shared_pool is None:
+        raw_pool = make_pool(SHARED_POOL_MIN_CONN, SHARED_POOL_MAX_CONN)
+        _shared_pool = _BoundedPool(raw_pool, SHARED_POOL_MAX_CONN)
+    return _shared_pool

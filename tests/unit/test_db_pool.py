@@ -6,6 +6,8 @@ first use, the way a Supabase-closed idle connection does.
 """
 
 from unittest.mock import MagicMock, patch
+import threading
+import time
 
 import psycopg2
 import pytest
@@ -64,6 +66,8 @@ class FakePool:
 
     def putconn(self, conn, close=False):
         self.returned.append((conn, close))
+        if not close:
+            self.free.append(conn)  # a real pool makes a returned connection reusable
 
 
 # --- run_read: idempotent reads, retried once -----------------------------
@@ -224,3 +228,100 @@ class TestFeatureCacheReadRecovers:
         assert hit is False
         assert features["tenure"] == 3
         fake_redis.setex.assert_called_once()
+
+
+class TestConnectTimeout:
+    def test_pool_connections_have_a_connect_timeout(self):
+        with patch.object(db.psycopg2.pool, "SimpleConnectionPool") as pool_cls, \
+             patch.object(db, "get_database_url", return_value="postgresql://example"):
+            db.make_pool(1, 5)
+
+        assert pool_cls.call_args.kwargs["connect_timeout"] == 5
+
+    def test_connect_local_has_a_connect_timeout(self):
+        with patch.object(db.psycopg2, "connect") as connect, \
+             patch.object(db, "get_database_url", return_value="postgresql://example"):
+            db.connect_local()
+
+        assert connect.call_args.kwargs["connect_timeout"] == 5
+
+    def test_connect_supabase_has_a_connect_timeout(self, monkeypatch):
+        monkeypatch.setenv("SUPABASE_DB_URL", "postgresql://example")
+        with patch.object(db.psycopg2, "connect") as connect:
+            db.connect_supabase()
+
+        assert connect.call_args.kwargs["connect_timeout"] == 5
+
+
+# --- the shared pool's bounded checkout -------------------------------
+
+class TestBoundedPoolExhaustionAndRecovery:
+    def test_getconn_raises_db_busy_error_once_the_pool_is_exhausted(self):
+        pool = FakePool(FakeConn("a"), FakeConn("b"))
+        bounded = db._BoundedPool(pool, max_conn=2, checkout_timeout=0.2)
+
+        bounded.getconn()
+        bounded.getconn()  # both of the pool's connections are now checked out
+
+        with pytest.raises(db.DBBusyError):
+            bounded.getconn()
+
+    def test_timeout_is_about_two_seconds_by_default(self):
+        pool = FakePool(FakeConn("a"))
+        bounded = db._BoundedPool(pool, max_conn=1)  # default CHECKOUT_TIMEOUT_SECONDS
+        bounded.getconn()
+
+        start = time.perf_counter()
+        with pytest.raises(db.DBBusyError):
+            bounded.getconn()
+        elapsed = time.perf_counter() - start
+
+        assert 1.8 <= elapsed <= 3.0
+
+    def test_a_released_connection_wakes_up_a_waiting_checkout(self):
+        pool = FakePool(FakeConn("a"), FakeConn("b"))
+        bounded = db._BoundedPool(pool, max_conn=2, checkout_timeout=2.0)
+        first = bounded.getconn()
+        bounded.getconn()  # pool is now fully checked out
+
+        def release_soon():
+            time.sleep(0.3)
+            bounded.putconn(first)
+
+        releaser = threading.Thread(target=release_soon)
+        releaser.start()
+        start = time.perf_counter()
+        conn = bounded.getconn()  # should wake up once release_soon() runs
+        elapsed = time.perf_counter() - start
+        releaser.join()
+
+        assert conn is first
+        assert elapsed < 1.0  # recovered well before the 2 s timeout
+
+    def test_putconn_always_releases_the_semaphore_even_if_the_inner_pool_errors(self):
+        pool = MagicMock()
+        pool.putconn.side_effect = RuntimeError("inner pool blew up")
+        bounded = db._BoundedPool(pool, max_conn=1, checkout_timeout=0.2)
+        conn = bounded.getconn()
+
+        with pytest.raises(RuntimeError):
+            bounded.putconn(conn)
+
+        # the slot must still be free despite the inner pool's error
+        bounded.getconn()
+
+
+# --- DBBusyError mapped to 503 at the API layer -----------------------
+
+class TestDbBusyErrorMapsTo503:
+    def test_a_busy_pool_returns_503_not_500(self):
+        from fastapi.testclient import TestClient
+
+        from src.serving import api
+
+        client = TestClient(api.app)  # no `with`: skips the lifespan
+        with patch.object(api, "get_user_by_email", side_effect=db.DBBusyError("exhausted")):
+            resp = client.post("/auth/login", json={"email": "a@example.com", "password": "x"})
+
+        assert resp.status_code == 503
+        assert resp.json()["error"] == "busy, retry shortly"

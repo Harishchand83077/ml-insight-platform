@@ -58,7 +58,7 @@ from langchain_core.tools import tool
 # on sys.path first - needed when this file's own directory is
 # run/imported directly.
 try:
-    from src.common.db import connect_local
+    from src.common.db import get_shared_pool, run_read
     from src.common.embedding_model import get_embedder
     from src.serving.explain import explain_prediction
     from src.serving.prediction import predict_churn, recommend_retention_action, simulate_prediction
@@ -66,7 +66,7 @@ except ImportError:
     import sys
 
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
-    from src.common.db import connect_local
+    from src.common.db import get_shared_pool, run_read
     from src.common.embedding_model import get_embedder
     from src.serving.explain import explain_prediction
     from src.serving.prediction import predict_churn, recommend_retention_action, simulate_prediction
@@ -95,6 +95,24 @@ ALLOWED_COLUMNS = {
     "avg_resolution_time_hours",
     "avg_usage_count",
 }
+
+
+SQL_STATEMENT_TIMEOUT = "5s"
+
+
+def _run_bounded_read(query, params=()):
+    """Runs a read-only tool query on the shared pool, with a statement timeout.
+    SET LOCAL is used because it applies only to this transaction: the pool
+    rolls the transaction back on return, so the timeout doesn't leak into the
+    next query that reuses the pooled connection."""
+
+    def _query(conn):
+        with conn.cursor() as cur:
+            cur.execute(f"SET LOCAL statement_timeout = '{SQL_STATEMENT_TIMEOUT}'")
+            cur.execute(query, params or None)
+            return cur.fetchall()
+
+    return run_read(get_shared_pool(), _query)
 
 
 @tool
@@ -273,13 +291,10 @@ def get_churn_rate_by_column(column_name: str) -> str:
         ORDER BY cf.{column_name}
     """
 
-    conn = connect_local()
     try:
-        with conn.cursor() as cur:
-            cur.execute(query)
-            rows = cur.fetchall()
-    finally:
-        conn.close()
+        rows = _run_bounded_read(query)
+    except Exception as e:
+        return f"Error computing the churn rate by {column_name}: {e}"
 
     lines = [f"Churn rate by {column_name}:"]
     for group_value, customer_count, churn_rate_pct in rows:
@@ -316,13 +331,10 @@ def get_customer_count(filters: dict) -> str:
         query = "SELECT COUNT(*) FROM customer_features"
         params = ()
 
-    conn = connect_local()
     try:
-        with conn.cursor() as cur:
-            cur.execute(query, params)
-            count = cur.fetchone()[0]
-    finally:
-        conn.close()
+        count = _run_bounded_read(query, params)[0][0]
+    except Exception as e:
+        return f"Error counting customers: {e}"
 
     filter_desc = filters if filters else "no filters (all customers)"
     return f"Customer count for {filter_desc}: {count}"
