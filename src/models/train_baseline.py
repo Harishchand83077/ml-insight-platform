@@ -145,10 +145,20 @@ def train_and_log_logistic_regression(X_train, X_test, y_train, y_test, feature_
     return metrics
 
 
-def train_and_log_xgboost(X_train, X_test, y_train, y_test):
+def build_xgboost_pipeline():
+    """The untrained preprocessing+model pipeline, same hyperparameters
+    this module has always used. Factored out so other callers (Stage 3b's
+    src/live/gate.py, training a retrain candidate on a different holdout)
+    import this instead of re-declaring the hyperparameters - one place
+    defines what "the same hyperparameters as production" means."""
     preprocessor = build_preprocessor()
     model = XGBClassifier(random_state=42, eval_metric="logloss")
-    pipeline = Pipeline([("preprocess", preprocessor), ("model", model)])
+    return Pipeline([("preprocess", preprocessor), ("model", model)])
+
+
+def train_and_log_xgboost(X_train, X_test, y_train, y_test):
+    pipeline = build_xgboost_pipeline()
+    model = pipeline.named_steps["model"]
 
     with mlflow.start_run(run_name="xgboost"):
         mlflow.log_params({f"model__{k}": v for k, v in model.get_params().items() if v is not None})

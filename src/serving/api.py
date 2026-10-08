@@ -46,9 +46,11 @@ blocking call made directly in this handler.
 
 import asyncio
 import hmac
+import json
 import logging
 import os
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Literal
 
 import groq
@@ -97,12 +99,31 @@ model_state = {}
 _startup_task = None  # holds a strong reference - see lifespan()
 
 
-PRODUCTION_MODEL_PATH = "models/production_model/model.skops"
+
+# MODEL_DIR lets Stage 3b's live check (and tests) point a server at a
+# temp copy of the model directory instead of the real deployment
+# artifact - promote() writes to the same env var's target, so a server
+# started with MODEL_DIR set to that temp dir serves exactly what was
+# just promoted into it, nothing more.
+MODEL_DIR = os.environ.get("MODEL_DIR", "models/production_model")
+PRODUCTION_MODEL_PATH = f"{MODEL_DIR}/model.skops"
+MODEL_VERSION_PATH = f"{MODEL_DIR}/VERSION.json"
 # Must match scripts/export_model_for_deployment.py's save_model call (see
 # models/production_model/MLmodel's own skops_trusted_types field, which
 # records the same list) - the pipeline's XGBoost step won't deserialize
 # without skops being told these specific types are safe to unpickle.
 PRODUCTION_MODEL_TRUSTED_TYPES = ["xgboost.core.Booster", "xgboost.sklearn.XGBClassifier"]
+
+
+def load_model_version():
+    """Reads VERSION.json next to the loaded model, written by
+    src.live.promote.promote() - "baseline" (not an exception) when it's
+    missing, which is the normal state for a model that was never
+    promoted through the gate, e.g. the original committed artifact."""
+    try:
+        return json.loads(Path(MODEL_VERSION_PATH).read_text())["version"]
+    except (FileNotFoundError, KeyError, ValueError):
+        return "baseline"
 
 
 def load_production_model():
@@ -152,6 +173,10 @@ async def _load_models():
 async def lifespan(app: FastAPI):
     global _startup_task
     model_state["ready"] = False
+    # Fast, synchronous: a tiny local JSON read, not worth a background
+    # thread - read here (not in _load_models) so /health reports the
+    # right version immediately, even before model loading finishes.
+    model_state["model_version"] = load_model_version()
     # Not awaited: startup returns immediately (so the app can start
     # accepting connections - in particular /health - right away) while
     # this keeps running in the background. Kept in a module-level
@@ -317,7 +342,11 @@ def health():
     # readiness check. models_ready in the body lets a caller distinguish
     # "alive but still loading" from "alive and serving" without /predict
     # or /chat needing to be hit (and bounced with 503) just to find out.
-    return {"status": "ok", "models_ready": model_state.get("ready", False)}
+    return {
+        "status": "ok",
+        "models_ready": model_state.get("ready", False),
+        "model_version": model_state.get("model_version", "baseline"),
+    }
 
 
 @app.post("/auth/signup", status_code=201)

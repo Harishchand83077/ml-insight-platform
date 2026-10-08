@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>Stage 1/2 live control panel</title>
+<title>Stage 1/2/3 live control panel</title>
 <style>
   body { font-family: system-ui, sans-serif; margin: 2rem; color: #1a1a1a; background: #fafafa; }
   h1 { font-size: 1.25rem; }
@@ -27,6 +27,13 @@
   .status-dot { display: inline-block; width: 0.6rem; height: 0.6rem; border-radius: 50%; margin-right: 0.4rem; }
   .status-dot.on { background: #16a34a; }
   .status-dot.off { background: #999; }
+  .gate-card { background: white; border: 1px solid #ddd; border-radius: 6px; padding: 1rem; margin-bottom: 1.5rem; }
+  .gate-verdict { display: inline-block; padding: 0.2rem 0.7rem; border-radius: 4px; font-weight: 700; color: white; }
+  .gate-verdict.promoted { background: #16a34a; }
+  .gate-verdict.rejected { background: #b91c1c; }
+  table.compare { border-collapse: collapse; margin: 0.6rem 0; }
+  table.compare th, table.compare td { border: 1px solid #ddd; padding: 0.3rem 0.6rem; text-align: right; font-size: 0.85rem; }
+  table.compare th:first-child, table.compare td:first-child { text-align: left; }
 </style>
 </head>
 <body>
@@ -46,6 +53,22 @@
     <button type="button" id="reset-btn">Reset pipeline</button>
     <button type="button" id="rebuild-btn">Rebuild features</button>
   </form>
+
+  <div class="gate-card">
+    <h2 style="margin-top:0;">Promotion gate</h2>
+    <form id="retrain-form">
+      <label>label_table
+        <select id="label_table">
+          <option value="customers">customers (real churn)</option>
+          <option value="stage3a_concept_drift_labels">stage3a_concept_drift_labels (Scenario B)</option>
+        </select>
+      </label>
+      <label>strength <input type="number" id="strength" value="1.0" step="0.1" min="0" max="1"></label>
+      <button type="submit">Retrain candidate</button>
+      <button type="button" id="promote-btn">Promote</button>
+    </form>
+    <div id="gate-result">No candidate trained yet this session.</div>
+  </div>
 
   <div class="grid">
     <div class="card">
@@ -138,6 +161,64 @@
     document.getElementById("rebuild-btn").addEventListener("click", async () => {
       await fetch("/pipeline/rebuild-features", { method: "POST" });
       refresh();
+    });
+
+    function renderGateResult(data) {
+      const el = document.getElementById("gate-result");
+      if (!data || !data.decision) {
+        el.textContent = data && data.error ? `Error: ${data.error}` : "No candidate trained yet this session.";
+        return;
+      }
+      const d = data.decision;
+      const ev = data.evaluation || {};
+      const verdictClass = d.promoted ? "promoted" : "rejected";
+      const verdictText = d.promoted ? "PROMOTED" : "REJECTED";
+
+      let html = `<span class="gate-verdict ${verdictClass}">${verdictText}</span>`;
+      html += "<table class=\"compare\"><tr><th></th><th>production</th><th>candidate</th></tr>";
+      if (ev.production && ev.candidate) {
+        html += `<tr><td>PR-AUC</td><td>${ev.production.pr_auc.toFixed(4)}</td><td>${ev.candidate.pr_auc.toFixed(4)}</td></tr>`;
+        html += `<tr><td>F1</td><td>${ev.production.f1.toFixed(4)}</td><td>${ev.candidate.f1.toFixed(4)}</td></tr>`;
+      }
+      html += "</table>";
+      html += `<div>PR-AUC diff (point): <b>${d.pr_auc_diff_point.toFixed(4)}</b></div>`;
+      html += `<div>95% interval: [${d.ci_lower.toFixed(4)}, ${d.ci_upper.toFixed(4)}]</div>`;
+      html += `<div>Required margin: ${d.margin.toFixed(4)}</div>`;
+      if (!d.promoted) {
+        html += `<div>Margin shortfall: ${d.margin_shortfall.toFixed(4)}  |  Interval-excludes-zero shortfall: ${d.interval_shortfall.toFixed(4)}</div>`;
+      }
+      html += `<div>Reasons: ${(d.reasons || []).join("; ")}</div>`;
+      if (data.compat_result) {
+        const c = data.compat_result;
+        html += `<div>Serving-compat check: ${c.passed ? "passed" : "FAILED"} (max abs diff ${c.max_abs_diff})</div>`;
+      }
+      el.innerHTML = html;
+    }
+
+    document.getElementById("retrain-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      document.getElementById("gate-result").textContent = "Training candidate...";
+      const resp = await fetch("/retrain", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          label_table: document.getElementById("label_table").value,
+          strength: parseFloat(document.getElementById("strength").value),
+        }),
+      });
+      renderGateResult(await resp.json());
+    });
+
+    document.getElementById("promote-btn").addEventListener("click", async () => {
+      document.getElementById("gate-result").textContent = "Running serving-compat check and promoting...";
+      const resp = await fetch("/promote", { method: "POST" });
+      const data = await resp.json();
+      if (resp.ok) {
+        document.getElementById("gate-result").innerHTML =
+          `<span class="gate-verdict promoted">PROMOTED</span> version ${data.version} at ${data.promoted_at}`;
+      } else {
+        renderGateResult(data);
+      }
     });
 
     refresh();

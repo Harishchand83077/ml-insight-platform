@@ -11,28 +11,41 @@ Run with:
 """
 
 import os
+import tempfile
 from pathlib import Path
 
 import psycopg2
 import requests
-from fastapi import FastAPI
+import skops.io
+from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel
 
 from src.live import drift as drift_module
+from src.live import gate as gate_module
 from src.live import pipeline
+from src.live import promote as promote_module
+from src.live import serving_compat
 from src.live.generator import QUEUES, EventGenerator
 from src.live.migrate_event_tables import migrate_event_tables
+from src.live.promote import resolve_target_dir
 from src.live.safety import local_pg_dsn
+from src.live.serving_compat import SKOPS_TRUSTED_TYPES
 from src.live.simclock import SimClock
 
-app = FastAPI(title="Stage 1/2 live-data control API")
+app = FastAPI(title="Stage 1/2/3 live-data control API")
 _clock = SimClock()
 _generator = EventGenerator(clock=_clock)
+_candidate_state = {}  # set by POST /retrain: pipeline, holdout, evaluation, decision, compat_result
 
 
 @app.exception_handler(drift_module.NoReferenceError)
 def _no_reference_handler(request, exc):
+    return JSONResponse(status_code=409, content={"error": str(exc)})
+
+
+@app.exception_handler(promote_module.PromotionRefused)
+def _promotion_refused_handler(request, exc):
     return JSONResponse(status_code=409, content={"error": str(exc)})
 
 
@@ -180,3 +193,97 @@ def pipeline_rebuild_features():
 @app.get("/pipeline/drift")
 def pipeline_drift():
     return drift_module.get_drift_report()
+
+
+# --- Stage 3b: the promotion gate --------------------------------------
+
+
+def _load_current_production_pipeline():
+    """The model /retrain compares the candidate against: whatever is at
+    MODEL_DIR (default models/production_model) right now, loaded through
+    the same skops.io.load() call + trusted-types list src.serving.api
+    uses at startup - imported from serving_compat, not re-declared."""
+    model_dir = resolve_target_dir()
+    return skops.io.load(f"{model_dir}/model.skops", trusted=SKOPS_TRUSTED_TYPES)
+
+
+def _sample_customer_ids(n=5):
+    conn = psycopg2.connect(**local_pg_dsn())
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT customer_id FROM customer_features ORDER BY customer_id LIMIT %s", (n,))
+            return [row[0] for row in cur.fetchall()]
+    finally:
+        conn.close()
+
+
+class RetrainRequest(BaseModel):
+    label_table: str = gate_module.DEFAULT_LABEL_TABLE
+    strength: float | None = None  # required when label_table is the Scenario B table
+
+
+@app.post("/retrain")
+def retrain(req: RetrainRequest):
+    """Freezes a holdout, trains a candidate with production's own
+    hyperparameters, and runs the statistical gate against whatever model
+    is currently at MODEL_DIR. Does not touch the serving-compat check or
+    promote anything - that's POST /promote, and only after this result
+    shows promoted=True."""
+    holdout = gate_module.freeze_holdout(label_table=req.label_table, strength=req.strength)
+    candidate = gate_module.train_candidate(holdout)
+    production = _load_current_production_pipeline()
+
+    evaluation = gate_module.evaluate(candidate, production, holdout)
+    decision = gate_module.decide(
+        evaluation["pr_auc_diff_point"],
+        evaluation["bootstrap"]["ci_lower"],
+        evaluation["bootstrap"]["ci_upper"],
+        holdout_metadata=holdout["metadata"],
+    )
+
+    _candidate_state.clear()
+    _candidate_state.update(pipeline=candidate, holdout=holdout, evaluation=evaluation, decision=decision, compat_result=None)
+
+    return {"evaluation": evaluation, "decision": decision}
+
+
+@app.get("/candidate/compare")
+def candidate_compare():
+    if "decision" not in _candidate_state:
+        raise HTTPException(status_code=404, detail="no candidate trained yet - call POST /retrain first")
+    return {
+        "evaluation": _candidate_state["evaluation"],
+        "decision": _candidate_state["decision"],
+        "compat_result": _candidate_state.get("compat_result"),
+    }
+
+
+@app.post("/promote")
+def promote_candidate():
+    if "decision" not in _candidate_state:
+        raise HTTPException(status_code=404, detail="no candidate trained yet - call POST /retrain first")
+
+    decision = _candidate_state["decision"]
+    if not decision.get("promoted"):
+        return JSONResponse(status_code=409, content={"error": "gate rejected this candidate", "decision": decision})
+
+    export_dir = tempfile.mkdtemp(prefix="stage3b_candidate_")
+    sample_ids = _sample_customer_ids(5)
+    compat_result = serving_compat.check_serving_compat(_candidate_state["pipeline"], sample_ids, export_dir)
+    _candidate_state["compat_result"] = compat_result
+
+    if not compat_result["passed"]:
+        return JSONResponse(
+            status_code=409, content={"error": "serving-compat check failed", "compat_result": compat_result}
+        )
+
+    version_info = promote_module.promote(
+        export_dir,
+        decision,
+        compat_result,
+        metrics={
+            "production": _candidate_state["evaluation"]["production"],
+            "candidate": _candidate_state["evaluation"]["candidate"],
+        },
+    )
+    return version_info
