@@ -892,3 +892,63 @@ memory:
 - Open risk found before stage 2: live events use wall-clock time while 
   historical data is from 2024, which can distort windowed features. 
   Fix: a simulated clock and an as_of parameter.
+
+  ## Live stream, stage 2 (Week 10)
+
+- Simulated clock, repeatable reset (two resets give identical table 
+  checksums), atomic feature rebuild, drift endpoint.
+- Drift-off control run flagged two columns (recent_30d_vs_older_60d_ratio, 
+  avg_session_duration_recent_30d): as the simulated clock advances 
+  past the historical data they become constant 0 for all customers 
+  (the window needs ~1,167 events/sec at 1 sim-day/sec; the generator 
+  does ~30). Excluded from the drift view with the reason visible in 
+  the response. The other 14 columns stayed under 0.0087 vs the 0.10 
+  threshold.
+- Open risk for stage 3: those two columns are model inputs, so scoring 
+  or retraining on the rebuilt table could mislead the promotion gate. 
+  Measuring before building.
+
+  ## Live stream, stage 3 pre-check (Week 10)
+
+- Measured whether the simulated clock's collapsed window columns 
+  distort model comparison: no. Two 60s drift-off trials moved PR-AUC by 
+  -0.0040 and -0.0067 and F1 by +0.0108 and +0.0051; the columns rank 
+  17th and 20th of 23 (1.87% of gain). Baseline reproduced the trained 
+  model's PR-AUC (0.7819) exactly.
+- Consequence: the model relies on contract (45%) and internet service 
+  (19%); event-feature drift is unlikely to degrade it. Data drift is 
+  not performance drift, so the promotion gate measures performance.
+- Plan: two scenarios (covariate drift: rejected by the gate; concept 
+  drift with simulated delayed labels: candidate wins, promoted). 
+  Gate uses a paired bootstrap interval plus a minimum margin.
+
+
+  ## Live stream, stage 3a: scenarios and gate (Week 10)
+
+- Covariate drift: production PR-AUC barely moved at any strength 
+  (+0.0006, -0.0069, +0.0104, all intervals include zero); retraining 
+  doesn't help because the X->Y relationship is unchanged.
+- Concept drift (simulated labels, local-only table): a full-population 
+  rule change makes the candidate win (+0.105, interval [0.065, 0.142]). 
+  Partial relabeling results (-0.134, -0.0376) are unverified.
+- Gate: paired bootstrap interval must exclude zero and the point 
+  difference must be >= 0.02. Paired SE measured 0.013-0.020; the single 
+  model's PR-AUC SE on the 1,409-row holdout is 0.0215.
+- Known weakness: the drift view's detections came from total_logins_90d, 
+  a volume-sensitive count, with no equal-volume drift-off control. 
+  Replacing it with event-level distribution drift.
+
+  ## Live stream, stage 3b: promotion gate built (Week 10)
+
+- Gate implemented: frozen shared holdout, paired bootstrap interval 
+  must exclude zero, point difference >= 0.02, plus a serving-compat 
+  check that reloads the exported model through the API's own loader 
+  before any promotion.
+- The compat check initially failed on rounding alone (API output is 
+  rounded to 4 decimals; tolerance was 1e-6). Caught by the live check, 
+  not unit tests; fixed by comparing full-precision outputs.
+- Verified live against a temp model directory: Scenario B at 100% 
+  promoted (version 1 visible in /health); baseline-vs-baseline rejected 
+  with reasons, /promote returned 409. Real model directory untouched.
+- Promotion is a manual git push by design; rollback script restores 
+  models/production_model from any commit.
