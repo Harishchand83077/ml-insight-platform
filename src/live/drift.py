@@ -76,6 +76,77 @@ EXCLUDED_COLUMNS = {
 # Columns actually fed to Evidently: FEATURE_COLUMNS minus the excluded ones.
 DRIFT_VIEW_COLUMNS = [c for c in FEATURE_COLUMNS if c not in EXCLUDED_COLUMNS]
 
+# These aren't excluded (they're real, informative features) but they ARE
+# unwindowed all-time counts (build_features.py's build_login_features/
+# build_ticket_features never filter these by as_of at all - see each
+# one's own comment there) - they mechanically grow as more events land,
+# live or historical, drifted or not. Measured: at drift=False, these are
+# exactly the columns that cross the drift threshold first (see the
+# "control at equal volume" measurement in this module's own report),
+# purely from accumulated volume. Labeled, not excluded: a real shift here
+# is still worth seeing, just not mistaken for a drift-toggle effect.
+VOLUME_SENSITIVE_COLUMNS = {"total_logins_90d", "num_tickets"}
+
+# --- Event-level drift ("stream_drift"): compares the LAST N live events'
+# own raw metric against a reference sample from the historical events,
+# per event type - not a customer-level, all-time aggregate. This responds
+# directly to the drift multipliers (DRIFT_RESOLUTION_TIME_SCALE,
+# DRIFT_USAGE_COUNT_SCALE in src/live/generator.py) because it looks only
+# at recent events' own values, with no dilution from thousands of
+# pre-existing historical rows the way avg_resolution_time_hours/
+# avg_usage_count (customer-level, all-time averages) are diluted.
+# session_duration_seconds is tracked for logins too, for symmetry and as
+# a useful negative control: drift mode does NOT scale login session
+# duration (only selection frequency, via DRIFT_LOGIN_FREQUENCY_SCALE), so
+# this one is expected to stay flat even when drift is clearly on - that's
+# a feature of the check (specificity), not a gap in it.
+STREAM_EVENT_METRICS = {
+    "login_events": "session_duration_seconds",
+    "support_tickets": "resolution_time_hours",
+    "feature_usage_logs": "usage_count",
+}
+# No fixed STREAM_DRIFT_THRESHOLD constant: Evidently picks the test (and
+# its threshold) per sample - see get_stream_drift_report()'s own comment
+# on is_drifted() for why that matters.
+#
+# N=100, not 200: at the achievable ~30 events/sec (70/15/15 split across
+# event types), tickets/usage events arrive at ~4.5/sec, so n=200 needs
+# ~45s just to fill the window - too close to the 60-90s detection target
+# to leave margin. n=100 fills in ~22s, and is still large enough to avoid
+# the small-sample noise get_stream_drift_report() guards against (caught
+# live at n_live=20-33: noisy enough to cross threshold by sampling
+# variance alone, with drift OFF) - verified at n=100 with a live
+# drift=False control before trusting it for the timing measurement.
+STREAM_DRIFT_SAMPLE_N = 100
+
+# Debounce: a p-value-based test (Evidently's own choice for some of these
+# comparisons - see get_stream_drift_report()'s is_drifted() comment) has
+# an inherent ~5% false-positive rate per check at the conventional 0.05
+# threshold, by construction. That's fine for ONE check, but /pipeline/
+# drift gets polled repeatedly (the panel, or anyone watching for the
+# toggle) - caught live: feature_usage_logs flagged "drifted" with drift
+# OFF on a single poll (p=0.00012, confirmed genuinely significant, just
+# a false positive - this will happen on ~1 in 20 checks of a true-null
+# metric by design, and compounds fast across repeated polls and 3
+# metrics). CONSECUTIVE_CONFIRMATIONS_REQUIRED means "drifted" in the
+# response only turns true after that many consecutive raw reads agree,
+# per table - a real shift (once the window is saturated with drifted
+# data) stays flagged on every subsequent read, so this costs detection
+# speed only on the scale of one extra poll interval, while cutting
+# compounding false positives sharply. raw_drifted is still reported
+# alongside, for anyone who wants the undebounced read.
+CONSECUTIVE_CONFIRMATIONS_REQUIRED = 2
+_stream_drift_history = {}  # table -> list of recent raw "drifted" bools
+
+
+def reset_stream_drift_history():
+    """Called by cache_reference() (i.e. on every POST /pipeline/reset) -
+    a reset starts a fresh event-table baseline, so a debounce streak
+    carried over from before it would misrepresent "confirmed" against
+    data that no longer exists in the same form."""
+    _stream_drift_history.clear()
+
+
 _reference = None  # cached X_train DataFrame; set by cache_reference()
 
 
@@ -101,11 +172,13 @@ def _load_current(conn):
 def cache_reference():
     """Re-derives X_train from whatever customer_features holds right now,
     the same way train_baseline.py does, and caches it as the fixed
-    reference for subsequent get_drift_report() calls."""
+    reference for subsequent get_drift_report() calls. Also clears the
+    stream_drift debounce history - see reset_stream_drift_history()."""
     global _reference
     X, y = load_dataset()
     X_train, _, _, _ = train_test_split(X, y, test_size=0.2, stratify=y, random_state=42)
     _reference = X_train
+    reset_stream_drift_history()
     return _reference
 
 
@@ -143,6 +216,7 @@ def get_drift_report():
                     "distance": float(value),
                     "threshold": float(threshold),
                     "drifted": bool(drifted),
+                    "volume_sensitive": column in VOLUME_SENSITIVE_COLUMNS,
                 }
             )
             if drifted:
@@ -159,4 +233,99 @@ def get_drift_report():
         "excluded_columns": [
             {"column": column, "reason": reason} for column, reason in EXCLUDED_COLUMNS.items()
         ],
+        "stream_drift": get_stream_drift_report(),
     }
+
+
+def _load_event_sample(conn, table, column, n, live):
+    """live=True: the N most recently inserted live events (event_id IS
+    NOT NULL), newest first by the serial id - "the last N events" in
+    insertion order. live=False: a deterministic reference sample, the N
+    most recent HISTORICAL events (event_id IS NULL) - "recent history,
+    right before live traffic started", not a random sample, so repeated
+    calls compare against the same fixed reference."""
+    predicate = "event_id IS NOT NULL" if live else "event_id IS NULL"
+    query = (
+        f"SELECT {column} AS value FROM {table} "
+        f"WHERE {predicate} AND {column} IS NOT NULL "
+        f"ORDER BY id DESC LIMIT %(n)s"
+    )
+    return pd.read_sql(query, conn, params={"n": n})
+
+
+def get_stream_drift_report(n=STREAM_DRIFT_SAMPLE_N):
+    """Event-level drift: the last `n` live events' own metric value vs a
+    same-sized historical reference sample, per event type - see this
+    module's docstring/STREAM_EVENT_METRICS for why this is the view that
+    actually responds to the drift toggle rather than to elapsed volume.
+
+    Requires a FULL window of live events (n_live >= n) before reporting a
+    real distance - caught live: with only a handful of live events (e.g.
+    33), the Wasserstein distance against a 200-row reference is itself
+    noisy enough to cross 0.1 by sampling variance alone, firing
+    "drifted" on login_events within a few seconds even with drift OFF.
+    That's sample-size noise, not a signal. Below a full window, this
+    reports "not enough events yet" the same way zero live events does."""
+    conn = psycopg2.connect(**local_pg_dsn())
+    try:
+        report = {}
+        for table, column in STREAM_EVENT_METRICS.items():
+            historical = _load_event_sample(conn, table, column, n, live=False)
+            live_sample = _load_event_sample(conn, table, column, n, live=True)
+
+            if len(live_sample) < n or len(historical) < n:
+                report[table] = {
+                    "metric": column,
+                    "n_live": len(live_sample),
+                    "n_reference": len(historical),
+                    "distance": None,
+                    "threshold": None,  # not known yet - Evidently picks the test (and its threshold) per sample
+                    "raw_drifted": False,
+                    "drifted": False,
+                    "note": f"not enough events yet to compare (need a full window of {n})",
+                }
+                continue
+
+            snapshot = Report([DataDriftPreset()]).run(live_sample, historical)
+            result = snapshot.dict()
+            distance, method, threshold = None, None, None
+            for m in result["metrics"]:
+                cfg = m.get("config", {})
+                if cfg.get("type") == "evidently:metric_v2:ValueDrift" and cfg.get("column") == "value":
+                    distance, method, threshold = float(m["value"]), cfg["method"], float(cfg["threshold"])
+
+            # Evidently auto-picks the test per column/sample size - a
+            # Wasserstein-style distance (drift when ABOVE threshold) for
+            # some, a p-value test like K-S (drift when BELOW threshold)
+            # for others. Caught live: at n=100 for login_events, Evidently
+            # picked "K-S p_value" (p=0.47); a flat "distance > threshold"
+            # check called that "drifted" when a p-value that high means
+            # the opposite. is_drifted() (same helper the feature-level
+            # view uses) gets the direction right either way - and
+            # threshold comes from Evidently's own config for this metric,
+            # not a hardcoded value that may not even apply to the test it
+            # chose.
+            raw_drifted = bool(distance is not None and is_drifted(method, distance, threshold))
+
+            # Debounce: only report "drifted" once the last
+            # CONSECUTIVE_CONFIRMATIONS_REQUIRED raw reads all agree - see
+            # the module-level comment on CONSECUTIVE_CONFIRMATIONS_REQUIRED
+            # for why a single raw read isn't trustworthy enough on its own.
+            history = _stream_drift_history.setdefault(table, [])
+            history.append(raw_drifted)
+            del history[: -CONSECUTIVE_CONFIRMATIONS_REQUIRED]
+            confirmed_drifted = len(history) >= CONSECUTIVE_CONFIRMATIONS_REQUIRED and all(history)
+
+            report[table] = {
+                "metric": column,
+                "n_live": len(live_sample),
+                "n_reference": len(historical),
+                "method": method,
+                "distance": distance,
+                "threshold": threshold,
+                "raw_drifted": raw_drifted,
+                "drifted": confirmed_drifted,
+            }
+        return report
+    finally:
+        conn.close()
